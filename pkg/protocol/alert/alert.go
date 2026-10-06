@@ -63,6 +63,7 @@ const (
 	NoRenegotiation        Description = 100
 	MissingExtension       Description = 109
 	UnsupportedExtension   Description = 110
+	UnknownPSKIdentity     Description = 115
 	CertificateRequired    Description = 116
 	NoApplicationProtocol  Description = 120
 	ECHRequired            Description = 121
@@ -124,6 +125,8 @@ func (d Description) String() string { //nolint:cyclop
 		return "MissingExtension"
 	case UnsupportedExtension:
 		return "UnsupportedExtension"
+	case UnknownPSKIdentity:
+		return "UnknownPSKIdentity"
 	case CertificateRequired:
 		return "CertificateRequired"
 	case ECHRequired:

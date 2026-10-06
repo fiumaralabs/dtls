@@ -50,3 +50,8 @@ func TestCertificateRequiredDescription(t *testing.T) {
 	assert.Equal(t, Description(116), CertificateRequired)
 	assert.Equal(t, "CertificateRequired", CertificateRequired.String())
 }
+
+func TestUnknownPSKIdentityDescription(t *testing.T) {
+	assert.Equal(t, Description(115), UnknownPSKIdentity)
+	assert.Equal(t, "UnknownPSKIdentity", UnknownPSKIdentity.String())
+}
