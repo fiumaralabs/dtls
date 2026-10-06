@@ -64,12 +64,16 @@ type listener struct {
 	doneOnce          sync.Once
 	acceptFilter      func([]byte) bool
 	datagramRouter    func([]byte) (string, bool)
+	classifyRecord    func([]byte) (epochZero bool, clientRandom []byte)
 	receiveBufferSize int
 	backlog           int
 
 	routesMu  sync.RWMutex
 	cids      map[string]*PacketConn
 	addresses map[addressKey]*PacketConn
+	// pending holds connections handshaking on the address of an
+	// established connection, which keeps the address until they complete.
+	pending map[addressKey]*PacketConn
 
 	nConns atomic.Int64
 	connWG sync.WaitGroup
@@ -178,6 +182,16 @@ func WithDatagramRouter(router func([]byte) (string, bool)) ListenerOption {
 	}
 }
 
+// WithNewHandshakeOnAddress lets an epoch 0 ClientHello from the address of
+// an established connection start a new connection (RFC 6347 Section 4.2.8).
+// classify reports whether the first record of a datagram has epoch 0 and,
+// if it is a ClientHello, its random.
+func WithNewHandshakeOnAddress(classify func([]byte) (epochZero bool, clientRandom []byte)) ListenerOption {
+	return func(l *listener) {
+		l.classifyRecord = classify
+	}
+}
+
 // WithReceiveBufferSize sets the size of the buffer used to read incoming datagrams.
 func WithReceiveBufferSize(size int) ListenerOption {
 	return func(l *listener) {
@@ -197,6 +211,7 @@ func Listen(conn net.PacketConn, opts ...ListenerOption) dtlsnet.PacketListener 
 		readDoneCh:        make(chan struct{}),
 		cids:              make(map[string]*PacketConn),
 		addresses:         make(map[addressKey]*PacketConn),
+		pending:           make(map[addressKey]*PacketConn),
 	}
 	for _, opt := range opts {
 		opt(packetListener)
@@ -239,79 +254,178 @@ func (l *listener) readLoop() {
 
 			return
 		}
-		conn, ok, err := l.getConn(raddr, buf[:n])
+		conn, also, ok, err := l.getConn(raddr, buf[:n])
 		if err != nil {
 			continue
 		}
 		if ok {
 			_, _ = conn.buffer.WriteTo(buf[:n], raddr)
 		}
+		if also != nil {
+			_, _ = also.buffer.WriteTo(buf[:n], raddr)
+		}
 	}
 }
 
-// getConn gets an existing connection or creates a new one.
-func (l *listener) getConn(raddr net.Addr, buf []byte) (*PacketConn, bool, error) { //nolint:cyclop
+// getConn gets an existing connection or creates a new one. If the second
+// connection is not nil, it receives the datagram too.
+func (l *listener) getConn(raddr net.Addr, buf []byte) (*PacketConn, *PacketConn, bool, error) { //nolint:cyclop
 	if l.datagramRouter != nil {
 		if cid, ok := l.datagramRouter(buf); ok {
 			l.routesMu.RLock()
 			conn := l.cids[cid]
 			l.routesMu.RUnlock()
 			if conn == nil || conn.closing.Load() {
-				return nil, false, nil
+				return nil, nil, false, nil
 			}
 
-			return conn, true, nil
+			return conn, nil, true, nil
 		}
 	}
 
 	key := keyForAddress(raddr)
 	l.routesMu.RLock()
-	conn := l.addresses[key]
+	conn, pending := l.addressRoutesLocked(key)
 	l.routesMu.RUnlock()
 	if conn != nil {
-		return conn, !conn.closing.Load(), nil
+		if conn.closing.Load() {
+			return conn, nil, false, nil
+		}
+		if l.classifyRecord != nil && conn.established.Load() {
+			return l.routeEstablished(conn, pending, raddr, buf)
+		}
+
+		return conn, nil, true, nil
 	}
 	if !l.accepting.Load() {
-		return nil, false, ErrClosedListener
+		return nil, nil, false, ErrClosedListener
 	}
 	if l.acceptFilter != nil && !l.acceptFilter(buf) {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 
 	l.acceptMu.Lock()
 	defer l.acceptMu.Unlock()
 	if !l.accepting.Load() {
-		return nil, false, ErrClosedListener
+		return nil, nil, false, ErrClosedListener
 	}
 	l.routesMu.Lock()
 	defer l.routesMu.Unlock()
-	if conn = l.addresses[key]; conn != nil {
-		return conn, !conn.closing.Load(), nil
+	if conn, _ = l.addressRoutesLocked(key); conn != nil {
+		return conn, nil, !conn.closing.Load(), nil
 	}
-	conn = l.newPacketConn(raddr)
+	conn, err := l.admitLocked(raddr)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	l.addresses[key] = conn
+
+	return conn, nil, true, nil
+}
+
+// addressRoutesLocked returns the connection routed by key and the pending
+// connection waiting to replace it. A pending connection whose predecessor
+// has closed is returned as the routed one. It requires routesMu.
+func (l *listener) addressRoutesLocked(key addressKey) (conn, pending *PacketConn) {
+	conn, pending = l.addresses[key], l.pending[key]
+	if conn == nil {
+		return pending, nil
+	}
+
+	return conn, pending
+}
+
+// admitLocked queues a new connection for Accept. It requires acceptMu and
+// routesMu.
+func (l *listener) admitLocked(raddr net.Addr) (*PacketConn, error) {
+	conn := l.newPacketConn(raddr)
 	l.nConns.Add(1)
 	select {
 	case l.acceptCh <- conn:
-		l.addresses[key] = conn
+		return conn, nil
 	default:
 		l.nConns.Add(-1)
 		_ = conn.buffer.Close()
 
-		return nil, false, ErrListenQueueExceeded
+		return nil, ErrListenQueueExceeded
+	}
+}
+
+// routeEstablished routes a datagram from the address of an established
+// connection. An epoch 0 ClientHello starts a pending connection for a new
+// handshake (RFC 6347 Section 4.2.8). The established connection keeps the
+// address until that handshake completes, so a ClientHello from a spoofed
+// address cannot take over the association. Meanwhile epoch 0 records go to
+// the pending connection only and later epochs to both: each discards the
+// records it cannot authenticate.
+//
+// A ClientHello with another random replaces the pending connection, so an
+// abandoned or spoofed attempt cannot hold the address until it times out.
+// Retransmissions and the ClientHello answering a cookie keep the random.
+func (l *listener) routeEstablished(conn, pending *PacketConn, raddr net.Addr, buf []byte) (*PacketConn, *PacketConn, bool, error) {
+	epochZero, random := l.classifyRecord(buf)
+	if pending != nil && pending.closing.Load() {
+		pending = nil
+	}
+	if random != nil && (pending == nil || pending.clientRandom != string(random)) {
+		var err error
+		if pending, err = l.admitPending(raddr, string(random)); err != nil {
+			return nil, nil, false, err
+		}
+	}
+	switch {
+	case pending == nil:
+		return conn, nil, true, nil
+	case epochZero:
+		return pending, nil, true, nil
+	default:
+		return conn, pending, true, nil
+	}
+}
+
+// admitPending queues a pending connection for a ClientHello with random. A
+// replaced pending connection is detached: it stops reading and writing, so
+// its handshake fails.
+func (l *listener) admitPending(raddr net.Addr, random string) (*PacketConn, error) {
+	l.acceptMu.Lock()
+	defer l.acceptMu.Unlock()
+	if !l.accepting.Load() {
+		return nil, ErrClosedListener
+	}
+	l.routesMu.Lock()
+	defer l.routesMu.Unlock()
+	key := keyForAddress(raddr)
+	previous := l.pending[key]
+	if previous != nil && !previous.closing.Load() && previous.clientRandom == random {
+		return previous, nil
+	}
+	conn, err := l.admitLocked(raddr)
+	if err != nil {
+		return nil, err
+	}
+	conn.clientRandom = random
+	l.pending[key] = conn
+	if previous != nil {
+		previous.detached.Store(true)
+		_ = previous.buffer.Close()
 	}
 
-	return conn, true, nil
+	return conn, nil
 }
 
 // PacketConn is a net.PacketConn implementation with explicit CID and address routing.
 type PacketConn struct {
 	listener *listener
 
-	closing atomic.Bool
-	raddr   atomic.Value // net.Addr
+	closing     atomic.Bool
+	detached    atomic.Bool // replaced while pending
+	established atomic.Bool
+	raddr       atomic.Value // net.Addr
 
 	cids    map[string]struct{}
 	address addressKey
+	// clientRandom is the ClientHello random of a pending connection.
+	clientRandom string
 
 	buffer *idtlsnet.PacketBuffer
 
@@ -427,6 +541,31 @@ func (l *listener) removeRoutes(c *PacketConn) {
 	if l.addresses[c.address] == c {
 		delete(l.addresses, c.address)
 	}
+	if l.pending[c.address] == c {
+		delete(l.pending, c.address)
+	}
+}
+
+// HandshakeComplete marks c as established. A pending connection then takes
+// over its address and the connection it replaces is closed: after a
+// verified Finished, RFC 6347 Section 4.2.8 requires abandoning the previous
+// association.
+func (c *PacketConn) HandshakeComplete() {
+	c.established.Store(true)
+	l := c.listener
+	l.routesMu.Lock()
+	if l.pending[c.address] != c {
+		l.routesMu.Unlock()
+
+		return
+	}
+	delete(l.pending, c.address)
+	previous := l.addresses[c.address]
+	l.addresses[c.address] = c
+	l.routesMu.Unlock()
+	if previous != nil {
+		_ = previous.Close()
+	}
 }
 
 // ReadFrom reads a single packet payload and its associated remote address from
@@ -437,7 +576,7 @@ func (c *PacketConn) ReadFrom(buff []byte) (int, net.Addr, error) {
 
 // WriteTo writes len(payload) bytes from payload to the specified address.
 func (c *PacketConn) WriteTo(payload []byte, addr net.Addr) (n int, err error) {
-	if c.closing.Load() {
+	if c.closing.Load() || c.detached.Load() {
 		return 0, io.EOF
 	}
 

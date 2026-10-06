@@ -382,6 +382,10 @@ func (c *Conn) HandshakeContext(ctx context.Context) error {
 		return err
 	}
 
+	if c.packetConn != nil {
+		c.packetConn.HandshakeComplete()
+	}
+
 	if common.LocalVersion == protocol.Version1_3 {
 		c.log.Trace("Handshake DTLS 1.3 Completed")
 	} else {

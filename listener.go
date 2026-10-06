@@ -9,6 +9,7 @@ import (
 	"github.com/pion/dtls/v4/internal/net/udp"
 	dtlsnet "github.com/pion/dtls/v4/pkg/net"
 	"github.com/pion/dtls/v4/pkg/protocol"
+	"github.com/pion/dtls/v4/pkg/protocol/handshake"
 	"github.com/pion/dtls/v4/pkg/protocol/recordlayer"
 )
 
@@ -26,6 +27,7 @@ func packetListenerOptions(config *dtlsConfig) []udp.ListenerOption {
 
 			return h.ContentType() == protocol.ContentTypeHandshake
 		}),
+		udp.WithNewHandshakeOnAddress(classifyFirstRecord),
 		udp.WithReceiveBufferSize(config.ReceiveBufferSize),
 	}
 	// A non-empty local receive CID must also be supported by listener routing.
@@ -34,6 +36,32 @@ func packetListenerOptions(config *dtlsConfig) []udp.ListenerOption {
 	}
 
 	return opts
+}
+
+// classifyFirstRecord reports whether the first record of a datagram has
+// epoch 0 and, if it starts a ClientHello, returns the client random.
+func classifyFirstRecord(packet []byte) (epochZero bool, clientRandom []byte) {
+	pkts, _ := recordlayer.UnpackDatagram(packet, recordlayer.UnpackDatagramConfig{})
+	if len(pkts) == 0 {
+		return false, nil
+	}
+	record, err := recordlayer.ParseRecord(pkts[0], 0)
+	if err != nil || record.IsUnified() || record.Epoch() != 0 {
+		return false, nil
+	}
+	if record.ContentType() != protocol.ContentTypeHandshake {
+		return true, nil
+	}
+	payload := record.Payload()
+	var header handshake.Header
+	// The random follows the header and the two-byte client_version.
+	randomStart := handshake.HeaderLength + 2
+	if header.Unmarshal(payload) != nil || header.Type != handshake.TypeClientHello ||
+		header.FragmentOffset != 0 || len(payload) < randomStart+handshake.RandomLength {
+		return true, nil
+	}
+
+	return true, payload[randomStart : randomStart+handshake.RandomLength]
 }
 
 func newListenerWithConfig(parent dtlsnet.PacketListener, config *dtlsConfig) net.Listener {

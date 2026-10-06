@@ -737,7 +737,7 @@ func TestPacketConnCIDAliases(t *testing.T) {
 	other := newCIDAliasTestConn(t, l, 2)
 	routesTo := func(cid string, want *PacketConn) {
 		t.Helper()
-		got, ok, err := l.getConn(&net.UDPAddr{Port: 3}, []byte(cid))
+		got, _, ok, err := l.getConn(&net.UDPAddr{Port: 3}, []byte(cid))
 		assert.NoError(t, err)
 		assert.Equal(t, want != nil, ok)
 		assert.Same(t, want, got)
@@ -766,4 +766,71 @@ func TestPacketConnCIDAliases(t *testing.T) {
 	routesTo("taken", other)
 	routesTo("alias", nil)
 	routesTo("initial", conn)
+}
+
+func TestListenerNewHandshakeOnAddress(t *testing.T) {
+	packetListener := &listener{
+		acceptCh:  make(chan *PacketConn, 4),
+		cids:      make(map[string]*PacketConn),
+		addresses: make(map[addressKey]*PacketConn),
+		pending:   make(map[addressKey]*PacketConn),
+		// "h<random>" is a ClientHello, "0" another epoch 0 record.
+		classifyRecord: func(buf []byte) (bool, []byte) {
+			if buf[0] == 'h' {
+				return true, buf[1:]
+			}
+
+			return buf[0] == '0', nil
+		},
+	}
+	packetListener.accepting.Store(true)
+	established := newCIDAliasTestConn(t, packetListener, 1)
+	raddr := established.raddr.Load().(net.Addr) //nolint:forcetypeassert
+	route := func(datagram string) (*PacketConn, *PacketConn) {
+		t.Helper()
+		got, also, ok, err := packetListener.getConn(raddr, []byte(datagram))
+		assert.NoError(t, err)
+		assert.True(t, ok)
+
+		return got, also
+	}
+	routesTo := func(datagram string, want, wantAlso *PacketConn) {
+		t.Helper()
+		got, also := route(datagram)
+		assert.Same(t, want, got, datagram)
+		assert.Same(t, wantAlso, also, datagram)
+	}
+	// newPending routes a ClientHello that must start a new connection.
+	newPending := func(datagram string) *PacketConn {
+		t.Helper()
+		got, also := route(datagram)
+		assert.Nil(t, also)
+		conn, _, err := packetListener.Accept()
+		assert.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+		assert.Same(t, conn, got)
+		assert.Same(t, got, packetListener.pending[established.address])
+
+		return got
+	}
+
+	// Before its handshake completes, a connection gets everything.
+	routesTo("hA", established, nil)
+	established.HandshakeComplete()
+	routesTo("x", established, nil)
+
+	pending := newPending("hA")
+	routesTo("0", pending, nil)
+	routesTo("x", established, pending)
+	routesTo("hA", pending, nil) // retransmission
+
+	replacement := newPending("hB")
+	assert.NotSame(t, pending, replacement)
+	_, err := pending.WriteTo([]byte("x"), raddr)
+	assert.ErrorIs(t, err, io.EOF, "a replaced pending connection must not write")
+
+	replacement.HandshakeComplete()
+	assert.True(t, established.closing.Load(), "the previous association must be abandoned")
+	routesTo("x", replacement, nil)
+	assert.Empty(t, packetListener.pending)
 }
