@@ -35,7 +35,8 @@ func (m *MessageCertificate) Marshal() ([]byte, error) {
 		if len(m.Certificate) != 1 || len(m.Certificate[0]) == 0 {
 			return nil, errLengthMismatch
 		}
-		out := make([]byte, handshakeMessageCertificateLengthFieldSize, handshakeMessageCertificateLengthFieldSize+len(m.Certificate[0]))
+		out := make([]byte, handshakeMessageCertificateLengthFieldSize,
+			handshakeMessageCertificateLengthFieldSize+len(m.Certificate[0]))
 		util.PutBigEndianUint24(out, uint32(len(m.Certificate[0]))) //nolint:gosec // G115
 
 		return append(out, m.Certificate[0]...), nil

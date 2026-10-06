@@ -115,22 +115,22 @@ func negotiateCertificateTypes(state *State, cfg *handshakeConfig) ([]extension.
 	}
 	unsupported := &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}
 	var exts []extension.Extension
-	t, ok := selectCertificateType(cfg.serverCertificateTypes, state.remoteOfferedServerCertType)
+	certType, ok := selectCertificateType(cfg.serverCertificateTypes, state.remoteOfferedServerCertType)
 	if !ok {
 		return nil, unsupported, errInvalidCertificate
 	}
-	state.localCertificateType = t
+	state.localCertificateType = certType
 	if state.remoteOfferedServerCertType != nil {
-		exts = append(exts, extension.NewServerCertificateType(true, t))
+		exts = append(exts, extension.NewServerCertificateType(true, certType))
 	}
 	if cfg.clientAuth > NoClientCert {
-		t, ok = selectCertificateType(cfg.clientCertificateTypes, state.remoteOfferedClientCertType)
+		certType, ok = selectCertificateType(cfg.clientCertificateTypes, state.remoteOfferedClientCertType)
 		if !ok {
 			return nil, unsupported, errInvalidCertificate
 		}
-		state.remoteCertificateType = t
+		state.remoteCertificateType = certType
 		if state.remoteOfferedClientCertType != nil {
-			exts = append(exts, extension.NewClientCertificateType(true, t))
+			exts = append(exts, extension.NewClientCertificateType(true, certType))
 		}
 	}
 

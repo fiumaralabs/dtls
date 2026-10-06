@@ -82,12 +82,12 @@ func flight3Parse(
 				}
 				state.NegotiatedProtocol = ext.ProtocolNameList[0]
 			case *extension.ClientCertificateType: // lwm2m patch: RFC 7250
-				if !ext.Selected || cfg.clientCertificateTypes == nil || !slices.Contains(cfg.clientCertificateTypes, ext.Types[0]) {
+				if !ext.Selected || !slices.Contains(cfg.clientCertificateTypes, ext.Types[0]) {
 					return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}, errInvalidCertificate
 				}
 				state.localCertificateType = ext.Types[0]
 			case *extension.ServerCertificateType:
-				if !ext.Selected || cfg.serverCertificateTypes == nil || !slices.Contains(cfg.serverCertificateTypes, ext.Types[0]) {
+				if !ext.Selected || !slices.Contains(cfg.serverCertificateTypes, ext.Types[0]) {
 					return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}, errInvalidCertificate
 				}
 				state.remoteCertificateType = ext.Types[0]

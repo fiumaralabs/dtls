@@ -77,7 +77,9 @@ func flight0Parse(
 		case *extension.SupportedEllipticCurves:
 			// lwm2m patch: the client's most preferred curve that we support
 			// (RFC 8422 §5.1, /0/x/18 order), not blindly the first one.
-			i := slices.IndexFunc(ext.EllipticCurves, func(c elliptic.Curve) bool { return slices.Contains(cfg.ellipticCurves, c) })
+			i := slices.IndexFunc(ext.EllipticCurves, func(c elliptic.Curve) bool {
+				return slices.Contains(cfg.ellipticCurves, c)
+			})
 			if i < 0 {
 				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InsufficientSecurity}, errNoSupportedEllipticCurves
 			}

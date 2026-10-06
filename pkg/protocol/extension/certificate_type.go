@@ -31,7 +31,7 @@ type certificateTypes struct {
 	Selected bool // ServerHello form: exactly one type, no list length
 }
 
-func (c *certificateTypes) marshal(t TypeValue) ([]byte, error) {
+func (c *certificateTypes) marshal(typ TypeValue) ([]byte, error) {
 	var body []byte
 	if c.Selected {
 		if len(c.Types) != 1 {
@@ -42,13 +42,13 @@ func (c *certificateTypes) marshal(t TypeValue) ([]byte, error) {
 		if len(c.Types) == 0 || len(c.Types) > 255 {
 			return nil, errInvalidCertificateTypes
 		}
-		body = append(body, byte(len(c.Types)))
+		body = append(body, byte(len(c.Types))) //nolint:gosec // G115, checked above
 		for _, ct := range c.Types {
 			body = append(body, byte(ct))
 		}
 	}
 	out := make([]byte, 4, 4+len(body))
-	binary.BigEndian.PutUint16(out, uint16(t))
+	binary.BigEndian.PutUint16(out, uint16(typ))
 	binary.BigEndian.PutUint16(out[2:], uint16(len(body))) //nolint:gosec // G115, bounded above
 
 	return append(out, body...), nil

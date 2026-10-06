@@ -590,3 +590,63 @@ func TestListenerCustomConnIDs(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 	serverWg.Wait()
 	assert.NoError(t, listener.Close())
 }
+
+// lwm2m patch: routing of a new handshake on an established address.
+func TestListenerNewHandshakeOnAddress(t *testing.T) {
+	lst := &listener{
+		acceptCh: make(chan *PacketConn, 4),
+		conns:    make(map[string]*PacketConn),
+		pending:  make(map[string]*PacketConn),
+	}
+	lst.accepting.Store(true)
+	raddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 5684}
+	established := lst.newPacketConn(raddr)
+	lst.conns[raddr.String()] = established
+	established.established.Store(true)
+
+	hello := func(random byte) []byte {
+		b := make([]byte, 13+12+2+32)
+		b[0], b[13] = 22, 1 // epoch 0 handshake record, ClientHello
+		b[27] = random
+
+		return b
+	}
+	epoch0 := []byte{21, 254, 253, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0}
+	epoch1 := []byte{23, 254, 253, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0}
+	routesTo := func(datagram []byte, want, wantAlso *PacketConn) {
+		t.Helper()
+		got, also, ok, err := lst.getConn(raddr, datagram)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Same(t, want, got)
+		assert.Same(t, wantAlso, also)
+	}
+	// newPending routes a ClientHello that must start a new conn.
+	newPending := func(datagram []byte) *PacketConn {
+		t.Helper()
+		got, also, ok, err := lst.getConn(raddr, datagram)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Nil(t, also)
+		assert.Len(t, lst.acceptCh, 1)
+		assert.Same(t, <-lst.acceptCh, got)
+
+		return got
+	}
+
+	pending := newPending(hello('A'))
+	routesTo(epoch0, pending, nil)
+	routesTo(epoch1, established, pending)
+	routesTo(hello('A'), pending, nil) // retransmission keeps the pending conn
+	assert.Empty(t, lst.acceptCh)
+
+	replacement := newPending(hello('B'))
+	assert.NotSame(t, pending, replacement)
+	routesTo(epoch0, replacement, nil)
+	_, err := pending.WriteTo([]byte("x"), raddr)
+	assert.ErrorIs(t, err, io.EOF, "a replaced pending conn must not write")
+
+	replacement.HandshakeDone()
+	routesTo(epoch1, replacement, nil)
+	assert.Empty(t, lst.pending)
+}
