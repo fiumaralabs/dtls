@@ -46,6 +46,9 @@ func flight4Parse(
 	}
 
 	if h, hasCert := msgs[handshake.TypeCertificate].(*handshake.MessageCertificate); hasCert {
+		if err := checkCertificateForm(h, state.remoteCertificateType); err != nil { // lwm2m patch
+			return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}, err
+		}
 		state.PeerCertificates = h.Certificate
 		// If the client offer its certificate, just disable session resumption.
 		// Otherwise, we have to store the certificate identitfication and expire time.
@@ -97,7 +100,10 @@ func flight4Parse(
 		var chains [][]*x509.Certificate
 		var err error
 		var verified bool
-		if cfg.clientAuth >= VerifyClientCertIfGiven {
+		if state.remoteCertificateType == CertificateTypeRawPublicKey {
+			// lwm2m patch: a raw key has no chain; VerifyPeerCertificate decides.
+			verified = cfg.verifyPeerCertificate != nil
+		} else if cfg.clientAuth >= VerifyClientCertIfGiven {
 			// Use cert-specific algorithms if present, otherwise fall back to signature_algorithms per RFC 8446
 			certAlgs := cfg.localCertSignatureSchemes
 			if len(certAlgs) == 0 {
@@ -129,7 +135,8 @@ func flight4Parse(
 		if state.cipherSuite.AuthenticationType() == CipherSuiteAuthenticationTypePreSharedKey {
 			var psk []byte
 			if psk, err = cfg.localPSKCallback(clientKeyExchange.IdentityHint); err != nil {
-				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err
+				// lwm2m patch: RFC 4279 §2; LwM2M clients treat 115 as Fail (T Tbl 5.2.10-1).
+				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnknownPSKIdentity}, err
 			}
 			state.IdentityHint = clientKeyExchange.IdentityHint
 			switch state.cipherSuite.KeyExchangeAlgorithm() {
@@ -189,8 +196,9 @@ func flight4Parse(
 
 	if len(state.SessionID) > 0 {
 		s := Session{
-			ID:     state.SessionID,
-			Secret: state.masterSecret,
+			ID:           state.SessionID,
+			Secret:       state.masterSecret,
+			IdentityHint: state.IdentityHint, // lwm2m patch
 		}
 		cfg.log.Tracef("[handshake] save new session: %x", s.ID)
 		if err := cfg.sessionStore.Set(state.SessionID, s); err != nil {
@@ -317,6 +325,12 @@ func flight4Generate(
 		extensions = append(extensions, &extension.ConnectionID{CID: state.getLocalConnectionID()})
 	}
 
+	certExts, alertPtr, err := negotiateCertificateTypes(state, cfg) // lwm2m patch: RFC 7250
+	if err != nil {
+		return nil, alertPtr, err
+	}
+	extensions = append(extensions, certExts...)
+
 	var pkts []*packet
 	cipherSuiteID := uint16(state.cipherSuite.ID())
 
@@ -363,6 +377,10 @@ func flight4Generate(
 		if err != nil {
 			return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, err
 		}
+		certMsg, err := certificateMessage(certificate, state.localCertificateType) // lwm2m patch
+		if err != nil {
+			return nil, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err
+		}
 
 		pkts = append(pkts, &packet{
 			record: &recordlayer.RecordLayer{
@@ -370,9 +388,7 @@ func flight4Generate(
 					Version: protocol.Version1_2,
 				},
 				Content: &handshake.Handshake{
-					Message: &handshake.MessageCertificate{
-						Certificate: certificate.Certificate,
-					},
+					Message: certMsg,
 				},
 			},
 		})

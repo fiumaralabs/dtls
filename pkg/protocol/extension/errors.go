@@ -20,6 +20,9 @@ var (
 	errBufferTooSmall = &protocol.TemporaryError{
 		Err: errors.New("buffer is too small"), //nolint:err113
 	}
+	errInvalidCertificateTypes = &protocol.FatalError{
+		Err: errors.New("invalid certificate type list"), //nolint:err113
+	}
 	errInvalidExtensionType = &protocol.FatalError{
 		Err: errors.New("invalid extension type"), //nolint:err113
 	}

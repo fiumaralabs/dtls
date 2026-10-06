@@ -199,6 +199,21 @@ type Config struct { //nolint:dupl
 	// https://datatracker.ietf.org/doc/html/rfc9146
 	ConnectionIDGenerator func() []byte
 
+	// ClientCertificateTypes and ServerCertificateTypes enable RFC 7250
+	// raw public keys (lwm2m patch). Each lists, in preference order, the
+	// certificate types for the client's and the server's credential:
+	// a client offers them in client_certificate_type and
+	// server_certificate_type; a server selects the first of its own list
+	// that the client offered. nil keeps plain X.509 and sends no
+	// extension. With CertificateTypeRawPublicKey the credential is the
+	// SubjectPublicKeyInfo of Certificates[0].PrivateKey (Certificate may
+	// then hold any placeholder, such as the SPKI itself). A raw key has no
+	// chain to verify: VerifyPeerCertificate receives []{SPKI} and must
+	// decide; without it a raw key is rejected unless InsecureSkipVerify
+	// (client) or ClientAuth < VerifyClientCertIfGiven (server).
+	ClientCertificateTypes []CertificateType
+	ServerCertificateTypes []CertificateType
+
 	// PaddingLengthGenerator generates the number of padding bytes used to
 	// inflate ciphertext size in order to obscure content size from observers.
 	// The length of the content is passed to the generator such that both

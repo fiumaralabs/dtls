@@ -68,6 +68,13 @@ type State struct {
 	localKeySignature          []byte                    // cached keySignature
 	peerCertificatesVerified   bool
 
+	// lwm2m patch, RFC 7250: the negotiated certificate types.
+	// remoteOffered* is what a client offered (nil: extension absent).
+	localCertificateType        CertificateType
+	remoteCertificateType       CertificateType
+	remoteOfferedClientCertType []CertificateType
+	remoteOfferedServerCertType []CertificateType
+
 	replayDetector []replaydetector.ReplayDetector
 
 	peerSupportedProtocols []string

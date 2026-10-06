@@ -9,6 +9,10 @@ type Session struct {
 	ID []byte
 	// Secret store session master secret
 	Secret []byte //nolint:gosec // no real risk of exporting the secret.
+	// IdentityHint is the PSK identity the session was authenticated with
+	// (server side, lwm2m patch), restored on resumption so the resumed
+	// connection keeps its authenticated identity.
+	IdentityHint []byte
 }
 
 // SessionStore defines methods needed for session resumption.

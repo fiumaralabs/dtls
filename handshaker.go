@@ -119,6 +119,8 @@ type handshakeConfig struct {
 	ellipticCurves               []elliptic.Curve
 	insecureSkipHelloVerify      bool
 	connectionIDGenerator        func() []byte
+	clientCertificateTypes       []CertificateType // lwm2m patch: RFC 7250
+	serverCertificateTypes       []CertificateType
 	helloRandomBytesGenerator    func() [handshake.RandomBytesLength]byte
 
 	onFlightState func(flightVal, handshakeState)

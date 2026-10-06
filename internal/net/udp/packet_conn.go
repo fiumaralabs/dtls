@@ -54,7 +54,10 @@ type listener struct {
 
 	connLock sync.Mutex
 	conns    map[string]*PacketConn
-	connWG   sync.WaitGroup
+	// pending holds, per remote address, a new handshake started by an
+	// epoch-0 ClientHello from an address whose conn is established (lwm2m patch).
+	pending map[string]*PacketConn
+	connWG  sync.WaitGroup
 
 	readWG   sync.WaitGroup
 	errClose atomic.Value // error
@@ -187,6 +190,7 @@ func (lc *ListenConfig) Listen(network string, laddr *net.UDPAddr) (dtlsnet.Pack
 		pConn:          conn,
 		acceptCh:       make(chan *PacketConn, lc.Backlog),
 		conns:          make(map[string]*PacketConn),
+		pending:        make(map[string]*PacketConn), // lwm2m patch
 		doneCh:         make(chan struct{}),
 		acceptFilter:   lc.AcceptFilter,
 		datagramRouter: lc.DatagramRouter,
@@ -230,51 +234,114 @@ func (l *listener) readLoop() {
 
 			return
 		}
-		conn, ok, err := l.getConn(raddr, buf[:n])
+		conn, also, ok, err := l.getConn(raddr, buf[:n])
 		if err != nil {
 			continue
 		}
 		if ok {
 			_, _ = conn.buffer.WriteTo(buf[:n], raddr)
 		}
+		if also != nil { // lwm2m patch: see getConn
+			_, _ = also.buffer.WriteTo(buf[:n], raddr)
+		}
 	}
 }
 
-// getConn gets an existing connection or creates a new one.
-func (l *listener) getConn(raddr net.Addr, buf []byte) (*PacketConn, bool, error) { //nolint:cyclop
+// getConn gets an existing connection or creates a new one. also, when not
+// nil, receives the datagram too (lwm2m patch).
+func (l *listener) getConn(raddr net.Addr, buf []byte) (conn, also *PacketConn, ok bool, err error) { //nolint:cyclop
 	l.connLock.Lock()
 	defer l.connLock.Unlock()
 	// If we have a custom resolver, use it.
 	if l.datagramRouter != nil {
 		if id, ok := l.datagramRouter(buf); ok {
 			if conn, ok := l.conns[id]; ok {
-				return conn, true, nil
+				return conn, nil, true, nil
 			}
 		}
 	}
 
 	// If we don't have a custom resolver, or we were unable to find an
 	// associated connection, fall back to remote address.
-	conn, ok := l.conns[raddr.String()]
+	key := raddr.String()
+	conn, ok = l.conns[key]
+	// lwm2m patch: a client that reuses its address for a new handshake
+	// (RFC 6347 §4.2.8: a ClientHello with epoch 0 on an existing
+	// association) gets a new conn. The established one keeps the address
+	// until the new handshake completes (HandshakeDone), so a spoofed
+	// ClientHello cannot take the address over. Meanwhile epoch-0 records go
+	// to the new conn only and later epochs to both: each conn drops the
+	// records it cannot decrypt.
+	if ok && conn.established.Load() {
+		pend := l.pending[key]
+		if pend == nil && isClientHello(buf) {
+			if isAccepting, ok := l.accepting.Load().(bool); !isAccepting || !ok {
+				return nil, nil, false, ErrClosedListener
+			}
+			pend = l.newPacketConn(raddr)
+			pend.pending = true
+			select {
+			case l.acceptCh <- pend:
+				l.pending[key] = pend
+			default:
+				return nil, nil, false, ErrListenQueueExceeded
+			}
+		}
+		if pend != nil {
+			if isEpochZero(buf) {
+				return pend, nil, true, nil
+			}
+
+			return conn, pend, true, nil
+		}
+	}
 	if !ok {
 		if isAccepting, ok := l.accepting.Load().(bool); !isAccepting || !ok {
-			return nil, false, ErrClosedListener
+			return nil, nil, false, ErrClosedListener
 		}
 		if l.acceptFilter != nil {
 			if !l.acceptFilter(buf) {
-				return nil, false, nil
+				return nil, nil, false, nil
 			}
 		}
 		conn = l.newPacketConn(raddr)
 		select {
 		case l.acceptCh <- conn:
-			l.conns[raddr.String()] = conn
+			l.conns[key] = conn
 		default:
-			return nil, false, ErrListenQueueExceeded
+			return nil, nil, false, ErrListenQueueExceeded
 		}
 	}
 
-	return conn, true, nil
+	return conn, nil, true, nil
+}
+
+// isEpochZero reports whether the first record of a datagram has epoch 0
+// (DTLS 1.2 record header: type, version, epoch, ...) (lwm2m patch).
+func isEpochZero(b []byte) bool { return len(b) >= 13 && b[3] == 0 && b[4] == 0 }
+
+// isClientHello reports whether a datagram starts with an epoch-0 handshake
+// record holding a ClientHello (lwm2m patch).
+func isClientHello(b []byte) bool { return isEpochZero(b) && b[0] == 22 && len(b) > 13 && b[13] == 1 }
+
+// HandshakeDone is called by the DTLS conn once its handshake completed: a
+// pending conn takes over its remote address (lwm2m patch).
+func (c *PacketConn) HandshakeDone() {
+	c.established.Store(true)
+	if !c.pending {
+		return
+	}
+	l, key := c.listener, c.raddr.String()
+	l.connLock.Lock()
+	defer l.connLock.Unlock()
+	if l.pending[key] != c {
+		return
+	}
+	delete(l.pending, key)
+	if old := l.conns[key]; old != nil {
+		old.rmraddr.Store(true) // the old conn no longer owns the address
+	}
+	l.conns[key] = c
 }
 
 // PacketConn is a net.PacketConn implementation that is able to dictate its
@@ -287,6 +354,9 @@ type PacketConn struct {
 	raddr   net.Addr
 	rmraddr atomic.Value // bool
 	id      atomic.Value // string
+
+	established atomic.Bool // handshake completed (lwm2m patch)
+	pending     bool        // started by a ClientHello on an established address (lwm2m patch)
 
 	buffer *idtlsnet.PacketBuffer
 
@@ -370,14 +440,21 @@ func (c *PacketConn) Close() error {
 		c.listener.connLock.Lock()
 		// If we have an alternate identifier, remove it from the connection
 		// map.
-		if id := c.id.Load(); id != nil {
+		if id := c.id.Load(); id != nil && c.listener.conns[id.(string)] == c { //nolint:forcetypeassert
 			delete(c.listener.conns, id.(string)) //nolint:forcetypeassert
 		}
 		// If we haven't already removed the remote address, remove it from the
-		// connection map.
+		// connection map. lwm2m patch: only entries this conn still owns; a
+		// replacing conn may hold the address now.
+		key := c.raddr.String()
 		if c.rmraddr.Load() == nil {
-			delete(c.listener.conns, c.raddr.String())
+			if c.listener.conns[key] == c {
+				delete(c.listener.conns, key)
+			}
 			c.rmraddr.Store(true)
+		}
+		if c.listener.pending[key] == c {
+			delete(c.listener.pending, key)
 		}
 		nConns := len(c.listener.conns)
 		c.listener.connLock.Unlock()

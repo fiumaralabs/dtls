@@ -103,6 +103,10 @@ func Unmarshal(buf []byte) ([]Extension, error) { //nolint:cyclop
 			err = unmarshalAndAppend(bufView, &KeyShare{})
 		case CookieTypeValue:
 			err = unmarshalAndAppend(bufView, &CookieExt{})
+		case ClientCertificateTypeTypeValue: // lwm2m patch: RFC 7250
+			err = unmarshalAndAppend(bufView, &ClientCertificateType{})
+		case ServerCertificateTypeTypeValue: // lwm2m patch: RFC 7250
+			err = unmarshalAndAppend(bufView, &ServerCertificateType{})
 		default:
 		}
 

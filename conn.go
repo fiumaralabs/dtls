@@ -63,6 +63,7 @@ type recvHandshakeState struct {
 type Conn struct {
 	lock           sync.RWMutex      // Internal lock (must not be public)
 	nextConn       netctx.PacketConn // Embedded Conn, typically a udpconn we read/write from
+	rawConn        net.PacketConn    // nextConn unwrapped (lwm2m patch)
 	fragmentBuffer *fragmentBuffer   // out-of-order and missing fragment handling
 	handshakeCache *handshakeCache   // caching of handshake messages for verifyData generation
 	decrypted      chan any          // Decrypted Application Data or error, pull by calling `Read`
@@ -232,6 +233,8 @@ func createConn(
 		localGetClientCertificate:     config.GetClientCertificate,
 		insecureSkipHelloVerify:       config.InsecureSkipVerifyHello,
 		connectionIDGenerator:         config.ConnectionIDGenerator,
+		clientCertificateTypes:        config.ClientCertificateTypes,
+		serverCertificateTypes:        config.ServerCertificateTypes,
 		helloRandomBytesGenerator:     config.HelloRandomBytesGenerator,
 		clientHelloMessageHook:        config.ClientHelloMessageHook,
 		serverHelloMessageHook:        config.ServerHelloMessageHook,
@@ -244,6 +247,7 @@ func createConn(
 	conn := &Conn{
 		rAddr:                   rAddr,
 		nextConn:                netctx.NewPacketConn(nextConn),
+		rawConn:                 nextConn, // lwm2m patch
 		handshakeConfig:         handshakeConfig,
 		fragmentBuffer:          newFragmentBuffer(),
 		handshakeCache:          newHandshakeCache(),
@@ -1290,6 +1294,10 @@ func (c *Conn) handshake(
 	ctxRead, cancelRead := context.WithCancel(context.Background())
 	cfg.onFlightState = func(_ flightVal, s handshakeState) {
 		if s == handshakeFinished && c.setHandshakeCompletedSuccessfully() {
+			// lwm2m patch: tell the listener's conn (see internal/net/udp).
+			if hd, ok := c.rawConn.(interface{ HandshakeDone() }); ok {
+				hd.HandshakeDone()
+			}
 			close(done)
 		}
 	}

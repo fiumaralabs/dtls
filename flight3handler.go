@@ -6,6 +6,7 @@ package dtls
 import (
 	"bytes"
 	"context"
+	"slices"
 
 	"github.com/pion/dtls/v3/internal/ciphersuite/types"
 	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
@@ -57,6 +58,8 @@ func flight3Parse(
 		if !serverHelloMsg.Version.Equal(protocol.Version1_2) {
 			return 0, &alert.Alert{Level: alert.Fatal, Description: alert.ProtocolVersion}, errUnsupportedProtocolVersion
 		}
+		state.localCertificateType, state.remoteCertificateType = CertificateTypeX509, CertificateTypeX509
+		serverCertTypeSelected := false
 		for _, v := range serverHelloMsg.Extensions {
 			switch ext := v.(type) {
 			case *extension.UseSRTP:
@@ -78,6 +81,17 @@ func flight3Parse(
 					}, extension.ErrALPNInvalidFormat // Meh, internal error?
 				}
 				state.NegotiatedProtocol = ext.ProtocolNameList[0]
+			case *extension.ClientCertificateType: // lwm2m patch: RFC 7250
+				if !ext.Selected || cfg.clientCertificateTypes == nil || !slices.Contains(cfg.clientCertificateTypes, ext.Types[0]) {
+					return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}, errInvalidCertificate
+				}
+				state.localCertificateType = ext.Types[0]
+			case *extension.ServerCertificateType:
+				if !ext.Selected || cfg.serverCertificateTypes == nil || !slices.Contains(cfg.serverCertificateTypes, ext.Types[0]) {
+					return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}, errInvalidCertificate
+				}
+				state.remoteCertificateType = ext.Types[0]
+				serverCertTypeSelected = true
 			case *extension.ConnectionID:
 				// Only set connection ID to be sent if client supports connection
 				// IDs.
@@ -86,6 +100,13 @@ func flight3Parse(
 				}
 			}
 		}
+		// lwm2m patch: without the extension the server certificate is X.509,
+		// which a raw-key-only client refuses.
+		if !serverCertTypeSelected && cfg.serverCertificateTypes != nil &&
+			!slices.Contains(cfg.serverCertificateTypes, CertificateTypeX509) {
+			return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}, errInvalidCertificate
+		}
+
 		// If the server doesn't support connection IDs, the client should not
 		// expect one to be sent.
 		if state.remoteConnectionID == nil {
@@ -153,6 +174,9 @@ func flight3Parse(
 	state.handshakeRecvSequence = seq
 
 	if h, ok := msgs[handshake.TypeCertificate].(*handshake.MessageCertificate); ok {
+		if err := checkCertificateForm(h, state.remoteCertificateType); err != nil { // lwm2m patch
+			return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnsupportedCertificate}, err
+		}
 		state.PeerCertificates = h.Certificate
 	} else if state.cipherSuite.AuthenticationType() == CipherSuiteAuthenticationTypeCertificate {
 		return 0, &alert.Alert{Level: alert.Fatal, Description: alert.NoCertificate}, errInvalidCertificate
@@ -332,6 +356,8 @@ func flight3Generate(
 	if state.getLocalConnectionID() != nil {
 		extensions = append(extensions, &extension.ConnectionID{CID: state.getLocalConnectionID()})
 	}
+
+	extensions = appendCertificateTypeOffers(extensions, cfg) // lwm2m patch: RFC 7250
 
 	clientHello := &handshake.MessageClientHello{
 		Version:            protocol.Version1_2,

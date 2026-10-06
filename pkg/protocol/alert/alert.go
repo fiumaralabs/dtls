@@ -64,6 +64,7 @@ const (
 	NoRenegotiation        Description = 100
 	UnsupportedExtension   Description = 110
 	NoApplicationProtocol  Description = 120
+	UnknownPSKIdentity     Description = 115 // RFC 4279 §2 (lwm2m patch)
 )
 
 func (d Description) String() string { //nolint:cyclop
@@ -78,6 +79,8 @@ func (d Description) String() string { //nolint:cyclop
 		return "DecryptionFailed"
 	case RecordOverflow:
 		return "RecordOverflow"
+	case UnknownPSKIdentity:
+		return "UnknownPSKIdentity"
 	case DecompressionFailure:
 		return "DecompressionFailure"
 	case HandshakeFailure:

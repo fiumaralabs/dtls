@@ -91,6 +91,9 @@ func flight5Generate(
 		if r, ok2 := msgs[handshake.TypeCertificateRequest].(*handshake.MessageCertificateRequest); ok2 {
 			reqInfo.CertificateTypes = append([]clientcertificate.Type{}, r.CertificateTypes...)
 			reqInfo.AcceptableCAs = r.CertificateAuthoritiesNames
+			if state.localCertificateType == CertificateTypeRawPublicKey {
+				reqInfo.AcceptableCAs = nil // lwm2m patch: CA names do not apply to a raw key (RFC 7250)
+			}
 		} else {
 			return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, errClientCertificateRequired
 		}
@@ -101,7 +104,11 @@ func flight5Generate(
 		if certificate == nil {
 			return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, errNotAcceptableCertificateChain
 		}
+		certMsg := &handshake.MessageCertificate{Certificate: certificate.Certificate}
 		if certificate.Certificate != nil {
+			if certMsg, err = certificateMessage(certificate, state.localCertificateType); err != nil { // lwm2m patch
+				return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, err
+			}
 			signer, ok = certificate.PrivateKey.(crypto.Signer)
 			if !ok {
 				return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, errInvalidPrivateKey
@@ -114,9 +121,7 @@ func flight5Generate(
 						Version: protocol.Version1_2,
 					},
 					Content: &handshake.Handshake{
-						Message: &handshake.MessageCertificate{
-							Certificate: certificate.Certificate,
-						},
+						Message: certMsg,
 					},
 				},
 			})
@@ -377,7 +382,12 @@ func initializeCipherSuite(
 			return &alert.Alert{Level: alert.Fatal, Description: alert.BadCertificate}, err
 		}
 		var chains [][]*x509.Certificate
-		if !cfg.insecureSkipVerify {
+		if state.remoteCertificateType == CertificateTypeRawPublicKey {
+			// lwm2m patch: a raw key has no chain; VerifyPeerCertificate decides.
+			if !cfg.insecureSkipVerify && cfg.verifyPeerCertificate == nil {
+				return &alert.Alert{Level: alert.Fatal, Description: alert.BadCertificate}, errInvalidCertificate
+			}
+		} else if !cfg.insecureSkipVerify {
 			certAlgs := cfg.localCertSignatureSchemes
 			if len(certAlgs) == 0 {
 				certAlgs = cfg.localSignatureSchemes

@@ -142,7 +142,7 @@ func verifyKeySignature(
 	if len(rawCertificates) == 0 {
 		return errLengthMismatch
 	}
-	certificate, err := x509.ParseCertificate(rawCertificates[0])
+	certificate, err := parsePeerCredential(rawCertificates[0]) // lwm2m patch: RFC 7250
 	if err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func verifyCertificateVerify(
 	if len(rawCertificates) == 0 {
 		return errLengthMismatch
 	}
-	certificate, err := x509.ParseCertificate(rawCertificates[0])
+	certificate, err := parsePeerCredential(rawCertificates[0]) // lwm2m patch: RFC 7250
 	if err != nil {
 		return err
 	}

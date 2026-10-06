@@ -6,6 +6,7 @@ package dtls
 import (
 	"context"
 	"crypto/rand"
+	"slices"
 
 	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
 	"github.com/pion/dtls/v3/pkg/protocol"
@@ -53,6 +54,7 @@ func flight0Parse(
 	}
 
 	state.remoteRandom = clientHello.Random
+	state.remoteOfferedClientCertType, state.remoteOfferedServerCertType = nil, nil
 
 	cipherSuites := []CipherSuite{}
 	for _, id := range clientHello.CipherSuiteIDs {
@@ -73,10 +75,13 @@ func flight0Parse(
 	for _, val := range clientHello.Extensions {
 		switch ext := val.(type) {
 		case *extension.SupportedEllipticCurves:
-			if len(ext.EllipticCurves) == 0 {
+			// lwm2m patch: the client's most preferred curve that we support
+			// (RFC 8422 §5.1, /0/x/18 order), not blindly the first one.
+			i := slices.IndexFunc(ext.EllipticCurves, func(c elliptic.Curve) bool { return slices.Contains(cfg.ellipticCurves, c) })
+			if i < 0 {
 				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InsufficientSecurity}, errNoSupportedEllipticCurves
 			}
-			state.namedCurve = ext.EllipticCurves[0]
+			state.namedCurve = ext.EllipticCurves[i]
 		case *extension.UseSRTP:
 			profile, ok := findMatchingSRTPProfile(cfg.localSRTPProtectionProfiles, ext.ProtectionProfiles)
 			if !ok {
@@ -100,6 +105,10 @@ func flight0Parse(
 			if cfg.connectionIDGenerator != nil {
 				state.remoteConnectionID = ext.CID
 			}
+		case *extension.ClientCertificateType: // lwm2m patch: RFC 7250
+			state.remoteOfferedClientCertType = append([]CertificateType{}, ext.Types...)
+		case *extension.ServerCertificateType:
+			state.remoteOfferedServerCertType = append([]CertificateType{}, ext.Types...)
 		case *extension.SignatureAlgorithmsCert:
 			// Store the client's certificate signature schemes for later validation
 			state.remoteCertSignatureSchemes = ext.SignatureHashAlgorithms
@@ -147,6 +156,7 @@ func handleHelloResume(
 
 			state.SessionID = sessionID
 			state.masterSecret = s.Secret
+			state.IdentityHint = s.IdentityHint // lwm2m patch
 
 			if err := state.initCipherSuite(); err != nil {
 				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err

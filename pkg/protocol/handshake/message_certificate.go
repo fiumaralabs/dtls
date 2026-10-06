@@ -13,6 +13,11 @@ import (
 // https://tools.ietf.org/html/rfc5246#section-7.4.2
 type MessageCertificate struct {
 	Certificate [][]byte
+
+	// RawPublicKey selects the RFC 7250 §3 form (lwm2m patch): the body is
+	// a single ASN.1_subjectPublicKeyInfo<1..2^24-1>, Certificate[0],
+	// instead of a certificate_list.
+	RawPublicKey bool
 }
 
 // Type returns the Handshake Type.
@@ -26,6 +31,15 @@ const (
 
 // Marshal encodes the Handshake.
 func (m *MessageCertificate) Marshal() ([]byte, error) {
+	if m.RawPublicKey {
+		if len(m.Certificate) != 1 || len(m.Certificate[0]) == 0 {
+			return nil, errLengthMismatch
+		}
+		out := make([]byte, handshakeMessageCertificateLengthFieldSize, handshakeMessageCertificateLengthFieldSize+len(m.Certificate[0]))
+		util.PutBigEndianUint24(out, uint32(len(m.Certificate[0]))) //nolint:gosec // G115
+
+		return append(out, m.Certificate[0]...), nil
+	}
 	total := handshakeMessageCertificateLengthFieldSize
 
 	for _, cert := range m.Certificate {
@@ -63,6 +77,18 @@ func (m *MessageCertificate) Unmarshal(data []byte) error {
 		data,
 	)); certificateBodyLen+handshakeMessageCertificateLengthFieldSize != len(data) {
 		return errLengthMismatch
+	}
+
+	// lwm2m patch: a raw public key body (RFC 7250) is one DER
+	// SubjectPublicKeyInfo, so it starts with a SEQUENCE tag (0x30) where a
+	// certificate_list has the high byte of a 24-bit length. A list entry
+	// that large (>= 3 MiB) cannot occur in DTLS, so the forms are disjoint.
+	// The handshake checks the form against the negotiated certificate type.
+	if len(data) > handshakeMessageCertificateLengthFieldSize && data[handshakeMessageCertificateLengthFieldSize] == 0x30 {
+		m.Certificate = [][]byte{append([]byte{}, data[handshakeMessageCertificateLengthFieldSize:]...)}
+		m.RawPublicKey = true
+
+		return nil
 	}
 
 	offset := handshakeMessageCertificateLengthFieldSize

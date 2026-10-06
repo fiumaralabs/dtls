@@ -161,6 +161,8 @@ func flight1Generate(
 		extensions = append(extensions, &extension.ConnectionID{CID: state.getLocalConnectionID()})
 	}
 
+	extensions = appendCertificateTypeOffers(extensions, cfg) // lwm2m patch: RFC 7250
+
 	clientHello := &handshake.MessageClientHello{
 		Version:            protocol.Version1_2,
 		SessionID:          state.SessionID,
