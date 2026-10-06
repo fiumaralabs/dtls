@@ -168,7 +168,7 @@ func flight4Parse(ctx context.Context, conn dtlsflight.Conn, state *dtlsstate.St
 
 	if len(state.SessionID) > 0 {
 		cfg.Log.Tracef("[handshake] save new session: %x", state.SessionID)
-		if err := cfg.SetSession(state.SessionID, state.SessionID, state.MasterSecret); err != nil {
+		if err := cfg.SetSession(state.SessionID, state.SessionID, state.MasterSecret, state.IdentityHint); err != nil {
 			return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err
 		}
 	}

@@ -787,16 +787,16 @@ func newHandshakeConfig(config *dtlsConfig, configValues connConfigValues, resum
 		MaxVersion:                    configValues.maxVersion,
 	}
 	if config.sessionStore != nil {
-		handshakeConfig.GetSession = func(key []byte) (id, secret []byte, err error) {
+		handshakeConfig.GetSession = func(key []byte) (id, secret, identityHint []byte, err error) {
 			session, err := config.sessionStore.Get(key)
 			if session.Ticket != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 
-			return session.ID, session.Secret, err
+			return session.ID, session.Secret, session.IdentityHint, err
 		}
-		handshakeConfig.SetSession = func(key, id, secret []byte) error {
-			return config.sessionStore.Set(key, Session{ID: id, Secret: secret})
+		handshakeConfig.SetSession = func(key, id, secret, identityHint []byte) error {
+			return config.sessionStore.Set(key, Session{ID: id, Secret: secret, IdentityHint: identityHint})
 		}
 		handshakeConfig.DelSession = config.sessionStore.Del
 		handshakeConfig.SetSessionTicket = func(key, id, secret []byte, ticket dtlsstate.SessionTicket) error {

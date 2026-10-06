@@ -126,13 +126,14 @@ func flight0Parse(_ context.Context, _ dtlsflight.Conn, state *dtlsstate.State12
 
 func handleHelloResume(sessionID []byte, state *dtlsstate.State12, cfg *dtlsconfig.HandshakeConfig, next Flight) (Flight, *alert.Alert, error) {
 	if len(sessionID) > 0 && cfg.HasSessionStore {
-		if id, secret, err := cfg.GetSession(sessionID); err != nil {
+		if id, secret, identityHint, err := cfg.GetSession(sessionID); err != nil {
 			return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err
 		} else if id != nil {
 			cfg.Log.Tracef("[handshake] resume session: %x", sessionID)
 
 			state.SessionID = sessionID
 			state.MasterSecret = secret
+			state.IdentityHint = identityHint
 
 			if err := state.InitCipherSuite(); err != nil {
 				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err

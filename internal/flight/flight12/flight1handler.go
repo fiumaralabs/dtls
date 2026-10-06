@@ -122,13 +122,14 @@ func flight1Generate(conn dtlsflight.Conn, state *dtlsstate.State12, _ *dtlsflig
 
 	if cfg.HasSessionStore {
 		cfg.Log.Tracef("[handshake] try to resume session")
-		if id, secret, err := cfg.GetSession(conn.SessionKey()); err != nil {
+		if id, secret, identityHint, err := cfg.GetSession(conn.SessionKey()); err != nil {
 			return nil, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err
 		} else if id != nil {
 			cfg.Log.Tracef("[handshake] get saved session: %x", id)
 
 			state.SessionID = id
 			state.MasterSecret = secret
+			state.IdentityHint = identityHint
 		}
 	}
 

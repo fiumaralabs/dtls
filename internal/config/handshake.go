@@ -143,8 +143,8 @@ type HandshakeConfig struct {
 	MaxEarlyDataSize              uint32
 	EnableEarlyData               bool
 	ClaimEarlyData                func(ticket []byte, expiresAt time.Time) (bool, error)
-	GetSession                    func(key []byte) (id, secret []byte, err error)
-	SetSession                    func(key, id, secret []byte) error
+	GetSession                    func(key []byte) (id, secret, identityHint []byte, err error)
+	SetSession                    func(key, id, secret, identityHint []byte) error
 	SetSessionTicket              func(key, id, secret []byte, ticket internalstate.SessionTicket) error
 	GetSessionTicket              func(key []byte, serverName string) (*internalstate.PSK, error)
 	DelSession                    func(key []byte) error

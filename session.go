@@ -25,6 +25,9 @@ type Session struct {
 	Secret []byte //nolint:gosec // no real risk of exporting the secret.
 	// Ticket is non-nil for DTLS 1.3 sessions.
 	Ticket *SessionTicket
+	// IdentityHint stores the PSK identity of a DTLS 1.2 PSK session,
+	// so a resumed connection reports the identity that authenticated it.
+	IdentityHint []byte
 }
 
 // ticketPSK ignores expired tickets and sessions from other protocol versions or names.

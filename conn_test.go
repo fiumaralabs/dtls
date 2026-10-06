@@ -2402,3 +2402,67 @@ func checkEarlyDataALPN(t *testing.T, scenario string, client, server *DetachedC
 	require.Equal(t, expected, dtlsstate.CommonState(client.conn.state).NegotiatedProtocol)
 	require.Equal(t, expected, dtlsstate.CommonState(server.conn.state).NegotiatedProtocol)
 }
+
+type mapSessionStore struct {
+	sync.Mutex
+	sessions map[string]Session
+}
+
+func (s *mapSessionStore) Set(key []byte, session Session) error {
+	s.Lock()
+	defer s.Unlock()
+	s.sessions[string(key)] = session
+
+	return nil
+}
+
+func (s *mapSessionStore) Get(key []byte) (Session, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	return s.sessions[string(key)], nil
+}
+
+func (s *mapSessionStore) Del(key []byte) error {
+	s.Lock()
+	defer s.Unlock()
+	delete(s.sessions, string(key))
+
+	return nil
+}
+
+// A resumed DTLS 1.2 PSK session must report the identity
+// that authenticated the original handshake.
+func TestResumedPSKSessionKeepsIdentity(t *testing.T) {
+	clientStore := &mapSessionStore{sessions: map[string]Session{}}
+	serverStore := &mapSessionStore{sessions: map[string]Session{}}
+	var sessionID []byte
+	for _, resumed := range []bool{false, true} {
+		client, server := handshakePair(t, []ClientOption{
+			WithMaxVersion(protocol.Version1_2), WithCipherSuites(cryptosuite.TLS_PSK_WITH_AES_128_CCM_8),
+			WithPSK(func() ([]PSK, error) {
+				return []PSK{{Identity: []byte("client-identity"), Key: []byte("key")}}, nil
+			}, nil),
+			WithSessionStore(clientStore),
+		}, []ServerOption{
+			WithMaxVersion(protocol.Version1_2), WithCipherSuites(cryptosuite.TLS_PSK_WITH_AES_128_CCM_8),
+			WithPSK(nil, func(identities [][]byte) (*PSK, error) {
+				return &PSK{Identity: identities[0], Key: []byte("key")}, nil
+			}),
+			WithSessionStore(serverStore),
+		})
+		require.NoError(t, client.configErr)
+		require.NoError(t, server.configErr)
+		require.NoError(t, client.handshakeError)
+		require.NoError(t, server.handshakeError)
+
+		state, ok := server.conn.ConnectionState()
+		require.True(t, ok)
+		require.NotEmpty(t, state.SessionID)
+		if resumed {
+			require.Equal(t, sessionID, state.SessionID, "session was not resumed")
+		}
+		sessionID = state.SessionID
+		require.Equal(t, []byte("client-identity"), state.IdentityHint, "resumed=%v", resumed)
+	}
+}

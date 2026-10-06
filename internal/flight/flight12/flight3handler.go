@@ -137,6 +137,7 @@ func flight3Parse(ctx context.Context, conn dtlsflight.Conn, state *dtlsstate.St
 		}
 
 		state.MasterSecret = []byte{}
+		state.IdentityHint = nil
 	}
 
 	var serverFlightPull dtlsflight.HandshakeCachePullResult
