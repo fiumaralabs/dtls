@@ -101,6 +101,14 @@ var extensionRegistry = map[extension.Type]map[extensionContext]extensionPayload
 		extensionContextServerHello12:       func() extensionPayloadValue { return &extension.ALPNSelection{} },
 		extensionContextEncryptedExtensions: func() extensionPayloadValue { return &extension.ALPNSelection{} },
 	},
+	extension.TypeClientCertificateType: {
+		extensionContextClientHello:   func() extensionPayloadValue { return &extension.ClientCertificateTypeOffer{} },
+		extensionContextServerHello12: func() extensionPayloadValue { return &extension.ClientCertificateTypeSelection{} },
+	},
+	extension.TypeServerCertificateType: {
+		extensionContextClientHello:   func() extensionPayloadValue { return &extension.ServerCertificateTypeOffer{} },
+		extensionContextServerHello12: func() extensionPayloadValue { return &extension.ServerCertificateTypeSelection{} },
+	},
 	extension.TypeExtendedMasterSecret: {extensionContextClientHello: func() extensionPayloadValue { return &extension12.ExtendedMasterSecret{} }, extensionContextServerHello12: func() extensionPayloadValue { return &extension12.ExtendedMasterSecret{} }},
 	extension.TypePreSharedKey:         {extensionContextClientHello: func() extensionPayloadValue { return &extension13.OfferedPSKs{} }, extensionContextServerHello13: func() extensionPayloadValue { return &extension13.SelectedPSK{} }},
 	extension.TypeEarlyData: {

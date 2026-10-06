@@ -270,6 +270,8 @@ func expectedExtensionRegistry() map[extension.Type]map[extensionContext]extensi
 		extension.TypeSignatureAlgorithms:   {extensionContextClientHello: &extension.SignatureAlgorithms{}, extensionContextCertificateRequest: &extension.SignatureAlgorithms{}},
 		extension.TypeUseSRTP:               {extensionContextClientHello: &extension.SRTPOffer{}, extensionContextServerHello12: &extension.SRTPSelection{}, extensionContextEncryptedExtensions: &extension.SRTPSelection{}},
 		extension.TypeALPN:                  {extensionContextClientHello: &extension.ALPNOffer{}, extensionContextServerHello12: &extension.ALPNSelection{}, extensionContextEncryptedExtensions: &extension.ALPNSelection{}},
+		extension.TypeClientCertificateType: {extensionContextClientHello: &extension.ClientCertificateTypeOffer{}, extensionContextServerHello12: &extension.ClientCertificateTypeSelection{}},
+		extension.TypeServerCertificateType: {extensionContextClientHello: &extension.ServerCertificateTypeOffer{}, extensionContextServerHello12: &extension.ServerCertificateTypeSelection{}},
 		extension.TypeExtendedMasterSecret:  {extensionContextClientHello: &extension12.ExtendedMasterSecret{}, extensionContextServerHello12: &extension12.ExtendedMasterSecret{}},
 		extension.TypePreSharedKey:          {extensionContextClientHello: &extension13.OfferedPSKs{}, extensionContextServerHello13: &extension13.SelectedPSK{}},
 		extension.TypeEarlyData:             {extensionContextClientHello: &extension13.EarlyData{}, extensionContextEncryptedExtensions: &extension13.EarlyData{}, extensionContextNewSessionTicket: &extension13.MaxEarlyData{}},

@@ -16,6 +16,13 @@ import (
 // https://tools.ietf.org/html/rfc5246#section-7.4.2
 type MessageCertificate struct {
 	Certificate [][]byte
+
+	// RawPublicKey selects the raw public key form negotiated with the
+	// certificate type extensions: the body is a single DER
+	// SubjectPublicKeyInfo, Certificate[0], instead of a certificate_list.
+	//
+	// https://www.rfc-editor.org/rfc/rfc7250#section-3
+	RawPublicKey bool
 }
 
 // Type returns the Handshake Type.
@@ -25,10 +32,19 @@ func (m MessageCertificate) Type() Type {
 
 const (
 	handshakeMessageCertificateLengthFieldSize = 3
+	asn1SequenceTag                            = 0x30
 )
 
 // MarshalSize returns the minimal size required for MarshalTo.
 func (m *MessageCertificate) MarshalSize() int {
+	if m.RawPublicKey {
+		size := handshakeMessageCertificateLengthFieldSize
+		if len(m.Certificate) > 0 {
+			size += len(m.Certificate[0])
+		}
+
+		return size
+	}
 	total := handshakeMessageCertificateLengthFieldSize
 
 	for _, cert := range m.Certificate {
@@ -50,6 +66,15 @@ func (m *MessageCertificate) Marshal() ([]byte, error) {
 func (m *MessageCertificate) MarshalTo(out []byte) (int, error) {
 	if len(out) < m.MarshalSize() {
 		return 0, dtlserrors.ErrBufferTooSmall
+	}
+	if m.RawPublicKey {
+		if len(m.Certificate) != 1 || len(m.Certificate[0]) == 0 {
+			return 0, dtlserrors.ErrLengthMismatch
+		}
+		//nolint:gosec // G115
+		util.PutBigEndianUint24(out, uint32(len(m.Certificate[0])))
+
+		return handshakeMessageCertificateLengthFieldSize + copy(out[handshakeMessageCertificateLengthFieldSize:], m.Certificate[0]), nil
 	}
 	// Total Payload MarshalSize
 	//nolint:gosec // G115
@@ -77,6 +102,18 @@ func (m *MessageCertificate) Unmarshal(data []byte) error {
 
 	if certificateBodyLen := int(util.BigEndianUint24(data)); certificateBodyLen+handshakeMessageCertificateLengthFieldSize != len(data) {
 		return dtlserrors.ErrLengthMismatch
+	}
+
+	// A raw public key body is one DER SubjectPublicKeyInfo, which starts
+	// with a SEQUENCE tag (0x30). In a certificate_list that byte is the high
+	// byte of the first entry's 24-bit length, which would mean an entry of
+	// at least 3 MiB, larger than the fragment buffer accepts. The handshake
+	// checks the form against the negotiated certificate type.
+	if len(data) > handshakeMessageCertificateLengthFieldSize && data[handshakeMessageCertificateLengthFieldSize] == asn1SequenceTag {
+		m.Certificate = [][]byte{bytes.Clone(data[handshakeMessageCertificateLengthFieldSize:])}
+		m.RawPublicKey = true
+
+		return nil
 	}
 
 	offset := handshakeMessageCertificateLengthFieldSize

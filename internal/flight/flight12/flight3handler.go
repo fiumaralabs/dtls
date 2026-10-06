@@ -97,6 +97,9 @@ func flight3Parse(ctx context.Context, conn dtlsflight.Conn, state *dtlsstate.St
 		if cfg.ExtendedMasterSecret == dtlsconfig.RequireExtendedMasterSecret && !state.ExtendedMasterSecret {
 			return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InsufficientSecurity}, dtlserrors.ErrClientRequiredButNoServerEMS
 		}
+		if alertPtr, err := parseCertificateTypeSelections(state, cfg, serverHelloMsg.Extensions); err != nil {
+			return 0, alertPtr, err
+		}
 
 		selectedCipherSuite, found := dtlsflight.FindCipherSuiteByID(
 			*serverHelloMsg.CipherSuiteID,
@@ -163,6 +166,9 @@ func flight3Parse(ctx context.Context, conn dtlsflight.Conn, state *dtlsstate.St
 	state.HandshakeRecvSequence = serverFlightPull.NextSequence
 
 	if h, ok := serverFlightPull.Messages[handshake.TypeCertificate].(*handshake.MessageCertificate); ok {
+		if alertPtr, err := checkCertificateForm(h, state.RemoteCertificateType); err != nil {
+			return 0, alertPtr, err
+		}
 		state.PeerCertificates = util.CloneByteSlices(h.Certificate)
 	} else if state.CipherSuite.AuthenticationType() == cryptosuite.AuthenticationTypeCertificate {
 		return 0, &alert.Alert{Level: alert.Fatal, Description: alert.NoCertificate}, dtlserrors.ErrInvalidCertificate
@@ -321,6 +327,8 @@ func flight3Generate(_ dtlsflight.Conn, state *dtlsstate.State12, _ *dtlsflight.
 	if cfg.ConnectionIDGenerator != nil && cidOffered {
 		extensions = dtlsflight.AppendConnectionIDExtensions(extensions, cid, cfg.EnableRRC && state.LocalClientHelloSnapshots.Initial().Offered(extension.TypeReturnRoutabilityCheck))
 	}
+
+	extensions = append(extensions, certificateTypeOffers(cfg)...)
 
 	clientHello := &handshake.MessageClientHello{Version: protocol.Version1_2, SessionID: state.SessionID, Cookie: state.Cookie, Random: state.LocalRandom, CipherSuiteIDs: dtlsflight.CipherSuiteIDs(cfg.LocalCipherSuites), CompressionMethods: dtlsflight.DefaultCompressionMethods(), Extensions: extensions}
 	if state.HasHelloVerifyRequest {

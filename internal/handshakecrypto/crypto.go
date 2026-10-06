@@ -184,7 +184,7 @@ func verifyCertificateSignature(message, remoteKeySignature []byte, hashAlgorith
 	if len(rawCertificates) == 0 {
 		return dtlserrors.ErrLengthMismatch
 	}
-	certificate, err := x509.ParseCertificate(rawCertificates[0])
+	certificate, err := parsePeerCredential(rawCertificates[0])
 	if err != nil {
 		return err
 	}
@@ -240,6 +240,21 @@ func verifyCertificateSignature(message, remoteKeySignature []byte, hashAlgorith
 	}
 
 	return dtlserrors.ErrKeySignatureVerifyUnimplemented
+}
+
+// parsePeerCredential parses the peer's end-entity certificate, or an RFC 7250
+// raw public key into a Certificate that carries only the key.
+func parsePeerCredential(raw []byte) (*x509.Certificate, error) {
+	certificate, err := x509.ParseCertificate(raw)
+	if err == nil {
+		return certificate, nil
+	}
+	publicKey, keyErr := x509.ParsePKIXPublicKey(raw)
+	if keyErr != nil {
+		return nil, err
+	}
+
+	return &x509.Certificate{PublicKey: publicKey, RawSubjectPublicKeyInfo: raw}, nil
 }
 
 func loadCerts(rawCertificates [][]byte) ([]*x509.Certificate, error) {

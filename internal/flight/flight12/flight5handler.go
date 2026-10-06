@@ -20,6 +20,7 @@ import (
 	"github.com/pion/dtls/v4/pkg/crypto/signaturehash"
 	"github.com/pion/dtls/v4/pkg/protocol"
 	"github.com/pion/dtls/v4/pkg/protocol/alert"
+	"github.com/pion/dtls/v4/pkg/protocol/extension"
 	"github.com/pion/dtls/v4/pkg/protocol/handshake"
 )
 
@@ -75,9 +76,12 @@ func flight5Generate(conn dtlsflight.Conn, state *dtlsstate.State12, cache *dtls
 		reqInfo := dtlsconfig.CertificateRequestInfo{Version: protocol.Version1_2}
 		if r, ok2 := pull.Messages[handshake.TypeCertificateRequest].(*handshake.MessageCertificateRequest); ok2 {
 			reqInfo.CertificateTypes = append([]clientcertificate.Type{}, r.CertificateTypes...)
-			reqInfo.AcceptableCAs = make([][]byte, len(r.CertificateAuthoritiesNames))
-			for i := range r.CertificateAuthoritiesNames {
-				reqInfo.AcceptableCAs[i] = bytes.Clone(r.CertificateAuthoritiesNames[i])
+			// CA names do not apply to a raw public key.
+			if state.LocalCertificateType != extension.CertificateTypeRawPublicKey {
+				reqInfo.AcceptableCAs = make([][]byte, len(r.CertificateAuthoritiesNames))
+				for i := range r.CertificateAuthoritiesNames {
+					reqInfo.AcceptableCAs[i] = bytes.Clone(r.CertificateAuthoritiesNames[i])
+				}
 			}
 		} else {
 			return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, dtlserrors.ErrClientCertificateRequired
@@ -89,14 +93,18 @@ func flight5Generate(conn dtlsflight.Conn, state *dtlsstate.State12, cache *dtls
 		if certificate == nil {
 			return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, dtlserrors.ErrNotAcceptableCertificateChain
 		}
+		certificateMsg := &handshake.MessageCertificate{Certificate: certificate.Certificate}
 		if certificate.Certificate != nil {
+			if certificateMsg, err = certificateMessage(certificate, state.LocalCertificateType); err != nil {
+				return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, err
+			}
 			var ok bool
 			signer, ok = certificate.PrivateKey.(crypto.Signer)
 			if !ok {
 				return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, dtlserrors.ErrInvalidPrivateKey
 			}
 		}
-		pkts = append(pkts, &dtlsflight.Outbound{Content: &handshake.Handshake{Message: &handshake.MessageCertificate{Certificate: certificate.Certificate}}})
+		pkts = append(pkts, &dtlsflight.Outbound{Content: &handshake.Handshake{Message: certificateMsg}})
 	}
 
 	serverKeyExchange := state.RemoteServerKeyExchange()
@@ -254,7 +262,12 @@ func initializeCipherSuite(state *dtlsstate.State12, cache *dtlsflight.Cache, cf
 			return &alert.Alert{Level: alert.Fatal, Description: alert.BadCertificate}, err
 		}
 		var chains [][]*x509.Certificate
-		if !cfg.InsecureSkipVerify {
+		if state.RemoteCertificateType == extension.CertificateTypeRawPublicKey {
+			// A raw public key has no chain; VerifyPeerCertificate decides.
+			if !cfg.InsecureSkipVerify && cfg.VerifyPeerCertificate == nil {
+				return &alert.Alert{Level: alert.Fatal, Description: alert.BadCertificate}, dtlserrors.ErrUnverifiedRawPublicKey
+			}
+		} else if !cfg.InsecureSkipVerify {
 			certAlgs := cfg.LocalCertSignatureSchemes
 			if len(certAlgs) == 0 {
 				certAlgs = cfg.LocalSignatureSchemes

@@ -51,6 +51,9 @@ func flight4Parse(ctx context.Context, conn dtlsflight.Conn, state *dtlsstate.St
 	}
 
 	if h, hasCert := pull.Messages[handshake.TypeCertificate].(*handshake.MessageCertificate); hasCert {
+		if alertPtr, err := checkCertificateForm(h, state.RemoteCertificateType); err != nil {
+			return 0, alertPtr, err
+		}
 		state.PeerCertificates = util.CloneByteSlices(h.Certificate)
 		// If the client offer its certificate, just disable session resumption.
 		// Otherwise, we have to store the certificate identitfication and expire time.
@@ -87,7 +90,10 @@ func flight4Parse(ctx context.Context, conn dtlsflight.Conn, state *dtlsstate.St
 		var chains [][]*x509.Certificate
 		var err error
 		var verified bool
-		if cfg.ClientAuth >= dtlsconfig.VerifyClientCertIfGiven {
+		if state.RemoteCertificateType == extension.CertificateTypeRawPublicKey {
+			// A raw public key has no chain; VerifyPeerCertificate decides.
+			verified = cfg.VerifyPeerCertificate != nil
+		} else if cfg.ClientAuth >= dtlsconfig.VerifyClientCertIfGiven {
 			// Use cert-specific algorithms if present, otherwise fall back to signature_algorithms per RFC 8446
 			certAlgs := cfg.LocalCertSignatureSchemes
 			if len(certAlgs) == 0 {
@@ -308,6 +314,11 @@ func serverHelloBaseExtensions(state *dtlsstate.State12, cfg *dtlsconfig.Handsha
 
 func serverHelloExtensions(state *dtlsstate.State12, cfg *dtlsconfig.HandshakeConfig, offer negotiation.ClientHelloSnapshot, srtpSelection negotiation.SRTPDecision) ([]extension.Value, *alert.Alert, error) {
 	extensions := serverHelloBaseExtensions(state, cfg, offer, srtpSelection)
+	certificateTypes, alertPtr, err := negotiateCertificateTypes(state, cfg, offer)
+	if err != nil {
+		return nil, alertPtr, err
+	}
+	extensions = append(extensions, certificateTypes...)
 	selectedProto, err := extension.ALPNProtocolSelection(cfg.SupportedProtocols, state.PeerSupportedProtocols)
 	if err != nil {
 		return nil, &alert.Alert{Level: alert.Fatal, Description: alert.NoApplicationProtocol}, err
@@ -368,7 +379,11 @@ func serverCertificateFlight(state *dtlsstate.State12, cfg *dtlsconfig.Handshake
 		return nil, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, err
 	}
 
-	pkts = append(pkts, &dtlsflight.Outbound{Content: &handshake.Handshake{Message: &handshake.MessageCertificate{Certificate: certificate.Certificate}}})
+	certificateMsg, err := certificateMessage(certificate, state.LocalCertificateType)
+	if err != nil {
+		return nil, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err
+	}
+	pkts = append(pkts, &dtlsflight.Outbound{Content: &handshake.Handshake{Message: certificateMsg}})
 
 	serverRandom := state.LocalRandom.MarshalFixed()
 	clientRandom := state.RemoteRandom.MarshalFixed()
