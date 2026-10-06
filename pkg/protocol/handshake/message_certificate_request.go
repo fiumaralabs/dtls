@@ -7,8 +7,8 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 
-	"github.com/pion/dtls/v3/pkg/crypto/clientcertificate"
-	"github.com/pion/dtls/v3/pkg/crypto/signaturehash"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/clientcertificate"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/signaturehash"
 )
 
 /*

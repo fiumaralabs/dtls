@@ -6,7 +6,7 @@ package handshake
 import (
 	"encoding/binary"
 
-	"github.com/pion/dtls/v3/pkg/protocol/extension"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/extension"
 	"golang.org/x/crypto/cryptobyte"
 )
 

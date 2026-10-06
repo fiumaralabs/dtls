@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/elliptic"
 	"github.com/stretchr/testify/assert"
 )
 

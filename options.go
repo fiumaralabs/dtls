@@ -10,9 +10,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
-	"github.com/pion/dtls/v3/pkg/protocol"
-	"github.com/pion/dtls/v3/pkg/protocol/handshake"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/elliptic"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/handshake"
 	"github.com/pion/logging"
 )
 

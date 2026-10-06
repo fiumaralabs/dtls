@@ -7,7 +7,7 @@ package extension
 import (
 	"crypto/tls"
 
-	"github.com/pion/dtls/v3/pkg/crypto/signaturehash"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/signaturehash"
 	"golang.org/x/crypto/cryptobyte"
 )
 

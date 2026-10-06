@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/pion/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
 )
 
 var errBufferTooSmall = &protocol.TemporaryError{Err: errors.New("buffer is too small")} //nolint:err113

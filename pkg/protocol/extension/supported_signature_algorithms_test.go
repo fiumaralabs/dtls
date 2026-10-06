@@ -6,9 +6,9 @@ package extension
 import (
 	"testing"
 
-	"github.com/pion/dtls/v3/pkg/crypto/hash"
-	"github.com/pion/dtls/v3/pkg/crypto/signature"
-	"github.com/pion/dtls/v3/pkg/crypto/signaturehash"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/hash"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/signature"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/signaturehash"
 	"github.com/stretchr/testify/assert"
 )
 

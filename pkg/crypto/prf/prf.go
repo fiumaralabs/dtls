@@ -13,8 +13,8 @@ import (
 	"hash"
 	"math"
 
-	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
-	"github.com/pion/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/elliptic"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
 )
 
 const (

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/dtls/v3/pkg/protocol"
-	"github.com/pion/dtls/v3/pkg/protocol/extension"
-	"github.com/pion/dtls/v3/pkg/protocol/handshake"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/extension"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/handshake"
 	"github.com/stretchr/testify/assert"
 )
 

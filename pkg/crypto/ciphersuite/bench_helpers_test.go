@@ -8,8 +8,8 @@ package ciphersuite
 import (
 	"testing"
 
-	"github.com/pion/dtls/v3/pkg/protocol"
-	"github.com/pion/dtls/v3/pkg/protocol/recordlayer"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/recordlayer"
 )
 
 type testCipher interface {

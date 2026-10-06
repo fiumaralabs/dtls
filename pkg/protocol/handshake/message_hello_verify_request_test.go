@@ -6,7 +6,7 @@ package handshake
 import (
 	"testing"
 
-	"github.com/pion/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 )
 

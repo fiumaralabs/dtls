@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
-	"github.com/pion/dtls/v3/pkg/crypto/selfsign"
-	dtlsnet "github.com/pion/dtls/v3/pkg/net"
-	"github.com/pion/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/elliptic"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/selfsign"
+	dtlsnet "github.com/fiumaralabs/dtls/v3/pkg/net"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
 	"github.com/pion/transport/v5/dpipe"
 	"github.com/stretchr/testify/require"
 )

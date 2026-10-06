@@ -6,8 +6,8 @@ package signaturehash
 import (
 	"testing"
 
-	"github.com/pion/dtls/v3/pkg/crypto/hash"
-	"github.com/pion/dtls/v3/pkg/crypto/signature"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/hash"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/signature"
 	"github.com/stretchr/testify/assert"
 )
 

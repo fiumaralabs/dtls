@@ -6,8 +6,8 @@ package handshake
 import (
 	"encoding/binary"
 
-	"github.com/pion/dtls/v3/pkg/protocol"
-	"github.com/pion/dtls/v3/pkg/protocol/extension"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/extension"
 )
 
 // MessageServerHello is sent in response to a ClientHello

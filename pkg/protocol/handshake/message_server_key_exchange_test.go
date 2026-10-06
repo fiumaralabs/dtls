@@ -6,10 +6,10 @@ package handshake
 import (
 	"testing"
 
-	"github.com/pion/dtls/v3/internal/ciphersuite/types"
-	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
-	"github.com/pion/dtls/v3/pkg/crypto/hash"
-	"github.com/pion/dtls/v3/pkg/crypto/signature"
+	"github.com/fiumaralabs/dtls/v3/internal/ciphersuite/types"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/elliptic"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/hash"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/signature"
 	"github.com/stretchr/testify/assert"
 )
 

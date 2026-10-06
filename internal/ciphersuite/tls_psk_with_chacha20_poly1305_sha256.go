@@ -4,7 +4,7 @@
 package ciphersuite
 
 import (
-	"github.com/pion/dtls/v3/pkg/crypto/clientcertificate"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/clientcertificate"
 )
 
 // TLSPskWithChacha20Poly1305Sha256 represents a TLS_PSK_WITH_CHACHA20_POLY1305_SHA256 CipherSuite.

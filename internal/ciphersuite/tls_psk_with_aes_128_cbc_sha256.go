@@ -9,10 +9,10 @@ import (
 	"hash"
 	"sync/atomic"
 
-	"github.com/pion/dtls/v3/pkg/crypto/ciphersuite"
-	"github.com/pion/dtls/v3/pkg/crypto/clientcertificate"
-	"github.com/pion/dtls/v3/pkg/crypto/prf"
-	"github.com/pion/dtls/v3/pkg/protocol/recordlayer"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/ciphersuite"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/clientcertificate"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/prf"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/recordlayer"
 )
 
 // TLSPskWithAes128CbcSha256 implements the TLS_PSK_WITH_AES_128_CBC_SHA256 CipherSuite.

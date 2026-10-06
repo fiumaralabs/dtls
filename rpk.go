@@ -11,9 +11,9 @@ import (
 	"crypto/x509"
 	"slices"
 
-	"github.com/pion/dtls/v3/pkg/protocol/alert"
-	"github.com/pion/dtls/v3/pkg/protocol/extension"
-	"github.com/pion/dtls/v3/pkg/protocol/handshake"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/alert"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/extension"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/handshake"
 )
 
 // CertificateType is a TLS certificate type (RFC 7250).

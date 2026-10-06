@@ -15,8 +15,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/pion/dtls/v3/pkg/crypto/clientcertificate"
-	"github.com/pion/dtls/v3/pkg/protocol/handshake"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/clientcertificate"
+	"github.com/fiumaralabs/dtls/v3/pkg/protocol/handshake"
 )
 
 // ClientHelloInfo contains information from a ClientHello message in order to

@@ -12,8 +12,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 
-	"github.com/pion/dtls/v3/pkg/crypto/hash"
-	"github.com/pion/dtls/v3/pkg/crypto/signature"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/hash"
+	"github.com/fiumaralabs/dtls/v3/pkg/crypto/signature"
 )
 
 // Algorithm is a signature/hash algorithm pairs which may be used in

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/dtls/v3"
-	"github.com/pion/dtls/v3/examples/util"
+	"github.com/fiumaralabs/dtls/v3"
+	"github.com/fiumaralabs/dtls/v3/examples/util"
 )
 
 func main() {
