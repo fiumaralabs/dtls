@@ -362,23 +362,31 @@ func clientHelloRandom(b []byte) string {
 }
 
 // HandshakeDone is called by the DTLS conn once its handshake completed: a
-// pending conn takes over its remote address (lwm2m patch).
+// pending conn takes over its remote address and the conn it replaces is
+// closed, since after a verified Finished RFC 6347 §4.2.8 requires
+// abandoning the previous association (lwm2m patch).
 func (c *PacketConn) HandshakeDone() {
 	c.established.Store(true)
 	if !c.pending {
 		return
 	}
-	l, key := c.listener, c.raddr.String()
-	l.connLock.Lock()
-	defer l.connLock.Unlock()
-	if l.pending[key] != c {
+	lst, key := c.listener, c.raddr.String()
+	lst.connLock.Lock()
+	if lst.pending[key] != c {
+		lst.connLock.Unlock()
+
 		return
 	}
-	delete(l.pending, key)
-	if old := l.conns[key]; old != nil {
+	delete(lst.pending, key)
+	old := lst.conns[key]
+	if old != nil {
 		old.rmraddr.Store(true) // the old conn no longer owns the address
 	}
-	l.conns[key] = c
+	lst.conns[key] = c
+	lst.connLock.Unlock()
+	if old != nil {
+		_ = old.Close() // Close takes connLock
+	}
 }
 
 // PacketConn is a net.PacketConn implementation that is able to dictate its

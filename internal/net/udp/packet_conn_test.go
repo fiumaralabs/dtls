@@ -603,6 +603,8 @@ func TestListenerNewHandshakeOnAddress(t *testing.T) {
 	established := lst.newPacketConn(raddr)
 	lst.conns[raddr.String()] = established
 	established.established.Store(true)
+	lst.connWG.Add(1) // as Accept does
+	lst.open.Add(1)
 
 	hello := func(random byte) []byte {
 		b := make([]byte, 13+12+2+32)
@@ -647,6 +649,8 @@ func TestListenerNewHandshakeOnAddress(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF, "a replaced pending conn must not write")
 
 	replacement.HandshakeDone()
+	_, _, err = established.ReadFrom(make([]byte, 1))
+	assert.Error(t, err, "the previous association must be abandoned")
 	routesTo(epoch1, replacement, nil)
 	assert.Empty(t, lst.pending)
 }

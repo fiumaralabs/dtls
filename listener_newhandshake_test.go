@@ -27,8 +27,9 @@ func TestNewHandshakeFromSameAddress(t *testing.T) {
 	require.NoError(t, err)
 	var served sync.WaitGroup
 	conns := make(chan net.Conn, 8)
+	readErrs := make(chan net.Conn, 8)
 	served.Add(1)
-	go func() { defer served.Done(); serveEcho(ln, conns) }()
+	go func() { defer served.Done(); serveEcho(ln, conns, readErrs) }()
 	defer func() {
 		// Close the server's conns, the superseded one included, so no
 		// goroutine outlives the test.
@@ -48,6 +49,8 @@ func TestNewHandshakeFromSameAddress(t *testing.T) {
 	client1 := dialHandshake(t, udp1, raddr, clientConfig, 5*time.Second)
 	defer func() { _ = client1.Close() }()
 	echo(t, client1, "first")
+	first := <-conns
+	defer func() { _ = first.Close() }()
 
 	// A spoofed ClientHello from the client's address starts a pending
 	// handshake but leaves the association alone.
@@ -75,11 +78,19 @@ func TestNewHandshakeFromSameAddress(t *testing.T) {
 	client3 := dialHandshake(t, &afterHelloVerify{PacketConn: udp3}, raddr, clientConfig, 5*time.Second)
 	defer func() { _ = client3.Close() }()
 	echo(t, client3, "reconnected")
+
+	// The new handshake abandoned the previous association.
+	select {
+	case failed := <-readErrs:
+		assert.Same(t, first, failed)
+	case <-time.After(2 * time.Second):
+		assert.Fail(t, "the superseded conn's Read did not fail")
+	}
 }
 
 // serveEcho accepts connections, sends them to conns and echoes what they
-// read.
-func serveEcho(ln net.Listener, conns chan<- net.Conn) {
+// read. A conn whose Read fails after its handshake is sent to readErrs.
+func serveEcho(ln net.Listener, conns, readErrs chan<- net.Conn) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -97,6 +108,8 @@ func serveEcho(ln net.Listener, conns chan<- net.Conn) {
 			for {
 				n, err := conn.Read(buf)
 				if err != nil {
+					readErrs <- conn
+
 					return
 				}
 				_, _ = conn.Write(buf[:n])
