@@ -11,7 +11,19 @@ import (
 	"github.com/pion/dtls/v4/pkg/crypto/clientcertificate"
 	"github.com/pion/dtls/v4/pkg/crypto/signaturehash"
 	"github.com/pion/dtls/v4/pkg/protocol"
+	"github.com/pion/dtls/v4/pkg/protocol/extension"
 	"github.com/pion/dtls/v4/pkg/protocol/handshake"
+)
+
+// CertificateType is a TLS certificate type, negotiated with the RFC 7250
+// client_certificate_type and server_certificate_type extensions.
+type CertificateType = extension.CertificateType
+
+const (
+	// CertificateTypeX509 is an X.509 certificate chain, the default.
+	CertificateTypeX509 = extension.CertificateTypeX509
+	// CertificateTypeRawPublicKey is a bare SubjectPublicKeyInfo.
+	CertificateTypeRawPublicKey = extension.CertificateTypeRawPublicKey
 )
 
 // ClientHelloInfo contains information from a ClientHello message in order to

@@ -106,3 +106,9 @@ func FuzzRenegotiationInfoUnmarshal(f *testing.F) {
 func FuzzServerNameUnmarshal(f *testing.F) {
 	fuzzWirePayload(f, extension.TypeServerName, func() payloadValue { return &extension.ServerNameOffer{} }, []byte{0x00, 0x00, 0x00, 0x10, 0x00, 0x0e, 0x00, 0x00, 0x0b, 't', 'e', 's', 't', '.', 'd', 'o', 'm', 'a', 'i', 'n'}, []byte{0x00, 0x00, 0x00, 0x02, 0x00, 0x00})
 }
+
+// FuzzCertificateTypeUnmarshal exercises ClientHello client_certificate_type
+// and server_certificate_type payloads.
+func FuzzCertificateTypeUnmarshal(f *testing.F) {
+	fuzzWirePayload(f, extension.TypeClientCertificateType, func() payloadValue { return &extension.ClientCertificateTypeOffer{} }, []byte{0x00, 0x13, 0x00, 0x03, 0x02, 0x02, 0x00}, []byte{0x00, 0x13, 0x00, 0x01, 0x02})
+}

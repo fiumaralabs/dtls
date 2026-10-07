@@ -89,6 +89,8 @@ type dtlsConfig struct {
 	OnConnectionAttempt           func(net.Addr) error
 	MinVersion                    protocol.Version
 	MaxVersion                    protocol.Version
+	ClientCertificateTypes        []CertificateType
+	ServerCertificateTypes        []CertificateType
 
 	customCipherSuites   func() []cryptosuite.Suite
 	pskClient            PSKClientCallback
@@ -404,6 +406,38 @@ func WithSupportedProtocols(protocols ...string) Option {
 // For functional options, an explicitly empty slice is not allowed.
 func WithEllipticCurves(curves ...elliptic.Curve) Option {
 	return sliceOption(func(c *dtlsConfig) *[]elliptic.Curve { return &c.EllipticCurves }, curves, dtlserrors.ErrEmptyEllipticCurves)
+}
+
+// WithClientCertificateTypes sets the certificate types for the client's
+// credential in preference order, enabling RFC 7250 raw public keys. A client
+// offers them in the client_certificate_type extension; a server selects the
+// first one the client offered. With CertificateTypeRawPublicKey the
+// credential is the public key of Certificates[0].PrivateKey; the
+// certificate bytes are not sent. A raw public key has no chain to verify,
+// so the peer's VerifyPeerCertificate receives the SubjectPublicKeyInfo and
+// must decide whether to trust it. Supported with DTLS 1.2 only.
+//
+// https://www.rfc-editor.org/rfc/rfc7250
+func WithClientCertificateTypes(types ...CertificateType) Option {
+	return certificateTypesOption(func(c *dtlsConfig) *[]CertificateType { return &c.ClientCertificateTypes }, types)
+}
+
+// WithServerCertificateTypes sets the certificate types for the server's
+// credential in preference order. A client offers them in the
+// server_certificate_type extension; a server selects the first one the
+// client offered. See WithClientCertificateTypes.
+func WithServerCertificateTypes(types ...CertificateType) Option {
+	return certificateTypesOption(func(c *dtlsConfig) *[]CertificateType { return &c.ServerCertificateTypes }, types)
+}
+
+func certificateTypesOption(field func(*dtlsConfig) *[]CertificateType, types []CertificateType) sharedOption {
+	for _, t := range types {
+		if t != CertificateTypeX509 && t != CertificateTypeRawPublicKey {
+			return func(*dtlsConfig) error { return dtlserrors.ErrUnsupportedCertificateType }
+		}
+	}
+
+	return sliceOption(field, types, dtlserrors.ErrEmptyCertificateTypes)
 }
 
 // WithGetClientCertificate sets the client certificate getter callback.
@@ -759,6 +793,8 @@ func newHandshakeConfig(config *dtlsConfig, configValues connConfigValues, resum
 		SupportedProtocols:            config.SupportedProtocols,
 		ClientAuth:                    dtlsconfig.ClientAuthType(config.ClientAuth),
 		LocalCertificates:             config.Certificates,
+		ClientCertificateTypes:        config.ClientCertificateTypes,
+		ServerCertificateTypes:        config.ServerCertificateTypes,
 		InsecureSkipVerify:            config.InsecureSkipVerify,
 		VerifyPeerCertificate:         config.VerifyPeerCertificate,
 		VerifyConnection:              adaptVerifyConnection(config.verifyConnection),
@@ -977,6 +1013,10 @@ func validateConfig(config *dtlsConfig) error { //nolint:cyclop
 	minVersion, maxVersion, err := effectiveProtocolVersionRange(config)
 	if err != nil {
 		return err
+	}
+
+	if maxVersion == protocol.Version1_3 && (config.ClientCertificateTypes != nil || config.ServerCertificateTypes != nil) {
+		return dtlserrors.ErrCertificateTypesRequireDTLS12
 	}
 
 	_, err = selectCipherSuites(config.CipherSuites, config.customCipherSuites, config.includeCertificateSuites(), config.pskEnabled(), minVersion, maxVersion)

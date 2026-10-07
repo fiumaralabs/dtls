@@ -9,6 +9,7 @@ import (
 	cryptosuite "github.com/pion/dtls/v4/pkg/crypto/ciphersuite"
 	"github.com/pion/dtls/v4/pkg/crypto/elliptic"
 	"github.com/pion/dtls/v4/pkg/crypto/signaturehash"
+	"github.com/pion/dtls/v4/pkg/protocol/extension"
 	"github.com/pion/dtls/v4/pkg/protocol/handshake"
 )
 
@@ -42,6 +43,10 @@ type State12 struct {
 	LocalKeySignature          []byte
 
 	PeerCertificatesVerified bool
+
+	// Certificate types negotiated with RFC 7250 extensions.
+	LocalCertificateType  extension.CertificateType
+	RemoteCertificateType extension.CertificateType
 
 	remoteServerKeyExchange *handshake.MessageServerKeyExchange
 }

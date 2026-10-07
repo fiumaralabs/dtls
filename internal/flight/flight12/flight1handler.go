@@ -145,6 +145,8 @@ func flight1Generate(conn dtlsflight.Conn, state *dtlsstate.State12, _ *dtlsflig
 		)
 	}
 
+	extensions = append(extensions, certificateTypeOffers(cfg)...)
+
 	clientHello := &handshake.MessageClientHello{Version: protocol.Version1_2, SessionID: state.SessionID, Cookie: state.Cookie, Random: state.LocalRandom, CipherSuiteIDs: dtlsflight.CipherSuiteIDs(cfg.LocalCipherSuites), CompressionMethods: dtlsflight.DefaultCompressionMethods(), Extensions: extensions}
 
 	clientHello, snapshot, err := dtlsflight.FinalizeClientHello(clientHello, cfg)

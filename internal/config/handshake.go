@@ -136,6 +136,8 @@ type HandshakeConfig struct {
 	SupportedProtocols            []string
 	ClientAuth                    ClientAuthType
 	LocalCertificates             []tls.Certificate
+	ClientCertificateTypes        []extension.CertificateType
+	ServerCertificateTypes        []extension.CertificateType
 	InsecureSkipVerify            bool
 	VerifyPeerCertificate         func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 	VerifyConnection              func(internalstate.Active) error

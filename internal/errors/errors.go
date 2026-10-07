@@ -134,6 +134,18 @@ var (
 	ErrEmptySupportedProtocols = stderrors.New(
 		"supported protocols option requires at least one protocol",
 	)
+	ErrEmptyCertificateTypes = stderrors.New(
+		"certificate types option requires at least one certificate type",
+	)
+	ErrUnsupportedCertificateType = stderrors.New(
+		"unsupported certificate type",
+	)
+	ErrUnverifiedRawPublicKey = stderrors.New(
+		"raw public key requires VerifyPeerCertificate or InsecureSkipVerify",
+	)
+	ErrCertificateTypesRequireDTLS12 = stderrors.New(
+		"certificate types are only supported with DTLS 1.2",
+	)
 	ErrEmptyEllipticCurves = stderrors.New(
 		"elliptic curves option requires at least one curve",
 	)

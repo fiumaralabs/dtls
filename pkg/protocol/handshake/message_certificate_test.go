@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"testing"
 
+	dtlserrors "github.com/pion/dtls/v4/internal/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -64,4 +65,27 @@ func TestEmptyHandshakeMessageCertificate(t *testing.T) {
 	c := &MessageCertificate{}
 	assert.NoError(t, c.Unmarshal(rawCertificate))
 	assert.Equal(t, expectedCertificate, c)
+}
+
+func TestHandshakeMessageCertificateRawPublicKey(t *testing.T) {
+	spki := []byte{0x30, 0x03, 0x01, 0x02, 0x03}
+	raw := append([]byte{0x00, 0x00, 0x05}, spki...)
+
+	parsed := &MessageCertificate{}
+	assert.NoError(t, parsed.Unmarshal(raw))
+	assert.True(t, parsed.RawPublicKey)
+	assert.Equal(t, [][]byte{spki}, parsed.Certificate)
+
+	out, err := parsed.Marshal()
+	assert.NoError(t, err)
+	assert.Equal(t, raw, out)
+
+	_, err = (&MessageCertificate{RawPublicKey: true}).Marshal()
+	assert.ErrorIs(t, err, dtlserrors.ErrLengthMismatch)
+
+	// An empty certificate_list stays in the X.509 form.
+	parsed = &MessageCertificate{}
+	assert.NoError(t, parsed.Unmarshal([]byte{0x00, 0x00, 0x00}))
+	assert.False(t, parsed.RawPublicKey)
+	assert.Empty(t, parsed.Certificate)
 }
