@@ -2402,3 +2402,21 @@ func checkEarlyDataALPN(t *testing.T, scenario string, client, server *DetachedC
 	require.Equal(t, expected, dtlsstate.CommonState(client.conn.state).NegotiatedProtocol)
 	require.Equal(t, expected, dtlsstate.CommonState(server.conn.state).NegotiatedProtocol)
 }
+
+// RFC 4279 Section 2: a server that does not recognize the PSK identity
+// may respond with unknown_psk_identity.
+func TestUnknownPSKIdentityAlert(t *testing.T) {
+	client, server := handshakePair(t, []ClientOption{
+		WithMaxVersion(protocol.Version1_2), WithCipherSuites(cryptosuite.TLS_PSK_WITH_AES_128_CCM_8),
+		WithPSK(func() ([]PSK, error) {
+			return []PSK{{Identity: []byte("unknown"), Key: []byte("key")}}, nil
+		}, nil),
+	}, []ServerOption{
+		WithMaxVersion(protocol.Version1_2), WithCipherSuites(cryptosuite.TLS_PSK_WITH_AES_128_CCM_8),
+		WithPSK(nil, func([][]byte) (*PSK, error) { return nil, nil }), //nolint:nilnil // No PSK matches.
+	})
+	require.NoError(t, client.configErr)
+	require.NoError(t, server.configErr)
+	require.ErrorIs(t, server.handshakeError, dtlserrors.ErrPSKNotNegotiated)
+	require.ErrorIs(t, client.handshakeError, &alertError{&alert.Alert{Level: alert.Fatal, Description: alert.UnknownPSKIdentity}})
+}

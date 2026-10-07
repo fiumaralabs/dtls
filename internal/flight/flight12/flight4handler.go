@@ -122,7 +122,8 @@ func flight4Parse(ctx context.Context, conn dtlsflight.Conn, state *dtlsstate.St
 				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, err
 			}
 			if len(psk) == 0 {
-				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.HandshakeFailure}, dtlserrors.ErrPSKNotNegotiated
+				// https://datatracker.ietf.org/doc/html/rfc4279#section-2
+				return 0, &alert.Alert{Level: alert.Fatal, Description: alert.UnknownPSKIdentity}, dtlserrors.ErrPSKNotNegotiated
 			}
 			state.IdentityHint = bytes.Clone(clientKeyExchange.IdentityHint)
 			switch state.CipherSuite.KeyExchangeAlgorithm() {
